@@ -10,7 +10,6 @@ import EmailSourceManager from './EmailSourceManager'
 
 export default function Dashboard() {
   const [events, setEvents] = useState<ExtractedDate[]>([])
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date())
   const [view, setView] = useState<'calendar' | 'list'>('calendar')
   const [user, setUser] = useState<any>(null)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -82,6 +81,11 @@ export default function Dashboard() {
       })
 
       if (!response.ok) {
+        // If we're running locally and the API doesn't exist, show a helpful message
+        if (response.status === 404) {
+          alert('API endpoint not available locally. Please test on the deployed Vercel app.')
+          return
+        }
         throw new Error('Failed to sync emails')
       }
 
@@ -93,7 +97,12 @@ export default function Dashboard() {
       alert(`Sync completed! Processed ${result.processed} emails and extracted ${result.extracted} dates.`)
     } catch (error) {
       console.error('Error syncing emails:', error)
-      alert('Error syncing emails. Please try again.')
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      if (errorMessage.includes('fetch')) {
+        alert('API endpoint not available locally. Please test on the deployed Vercel app.')
+      } else {
+        alert('Error syncing emails. Please try again.')
+      }
     } finally {
       setIsSyncing(false)
     }
