@@ -44,28 +44,50 @@ export default function AuthCallback() {
         setMessage('Saving authentication data...');
 
         // Save tokens to Supabase
-        // For now, we'll use a temporary user ID until we implement proper Supabase auth
-        const tempUserId = crypto.randomUUID();
-        
-        // Create or update user in our database
-        // Note: This will work once RLS policies are updated or disabled
-        const { error: insertError } = await supabase
+        // Check if user already exists
+        const { data: existingUser } = await supabase
           .from('users')
-          .upsert({
-            id: tempUserId,
-            email: userEmail,
-            gmail_token: tokens.accessToken,
-            gmail_refresh_token: tokens.refreshToken,
-            last_sync_at: new Date().toISOString()
-          });
+          .select('id')
+          .eq('email', userEmail)
+          .single();
 
-        if (insertError) {
-          throw new Error(`Database error: ${insertError.message}`);
+        let userId;
+        if (existingUser) {
+          // Update existing user
+          userId = existingUser.id;
+          const { error: updateError } = await supabase
+            .from('users')
+            .update({
+              gmail_token: tokens.accessToken,
+              gmail_refresh_token: tokens.refreshToken,
+              last_sync_at: new Date().toISOString()
+            })
+            .eq('id', userId);
+
+          if (updateError) {
+            throw new Error(`Database error: ${updateError.message}`);
+          }
+        } else {
+          // Create new user
+          userId = crypto.randomUUID();
+          const { error: insertError } = await supabase
+            .from('users')
+            .insert({
+              id: userId,
+              email: userEmail,
+              gmail_token: tokens.accessToken,
+              gmail_refresh_token: tokens.refreshToken,
+              last_sync_at: new Date().toISOString()
+            });
+
+          if (insertError) {
+            throw new Error(`Database error: ${insertError.message}`);
+          }
         }
 
         // Store user info in localStorage for now
         localStorage.setItem('user', JSON.stringify({
-          id: tempUserId,
+          id: userId,
           email: userEmail,
           accessToken: tokens.accessToken,
           refreshToken: tokens.refreshToken
