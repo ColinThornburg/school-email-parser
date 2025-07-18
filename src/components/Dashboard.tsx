@@ -23,6 +23,7 @@ export default function Dashboard() {
     const storedUser = localStorage.getItem('user')
     if (storedUser) {
       const userData = JSON.parse(storedUser)
+      console.log('Dashboard loaded user:', userData)
       setUser(userData)
       setIsAuthenticated(true)
       fetchEvents(userData.id)

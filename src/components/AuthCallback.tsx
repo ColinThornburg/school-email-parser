@@ -39,9 +39,10 @@ export default function AuthCallback() {
 
         // Save tokens to Supabase
         // For now, we'll use a temporary user ID until we implement proper Supabase auth
-        const tempUserId = 'temp-user-' + Date.now();
+        const tempUserId = crypto.randomUUID();
         
         // Create or update user in our database
+        // Note: This will work once RLS policies are updated or disabled
         const { error: insertError } = await supabase
           .from('users')
           .upsert({

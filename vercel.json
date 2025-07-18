@@ -1,35 +1,20 @@
 {
   "name": "school-email-parser",
-  "version": 2,
-  "builds": [
-    {
-      "src": "package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "dist"
-      }
-    }
-  ],
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "/api/$1"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
-    }
-  ],
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
   "functions": {
     "api/sync-emails.ts": {
       "maxDuration": 30
     }
   },
-  "env": {
-    "VITE_SUPABASE_URL": "@vite_supabase_url",
-    "VITE_SUPABASE_ANON_KEY": "@vite_supabase_anon_key",
-    "VITE_GMAIL_CLIENT_ID": "@vite_gmail_client_id",
-    "VITE_GMAIL_CLIENT_SECRET": "@vite_gmail_client_secret",
-    "VITE_OPENAI_API_KEY": "@vite_openai_api_key"
-  }
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
 } 

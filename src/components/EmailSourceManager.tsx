@@ -18,6 +18,8 @@ export default function EmailSourceManager({ userId, onSourcesUpdated }: EmailSo
   const [editingEmail, setEditingEmail] = useState('');
   const [loading, setLoading] = useState(true);
 
+  console.log('EmailSourceManager initialized with userId:', userId);
+
   useEffect(() => {
     fetchSources();
   }, [userId]);
@@ -34,7 +36,17 @@ export default function EmailSourceManager({ userId, onSourcesUpdated }: EmailSo
         throw error;
       }
 
-      setSources(data || []);
+      // Map database fields to TypeScript interface
+      const mappedSources = (data || []).map((source: any) => ({
+        id: source.id,
+        userId: source.user_id,
+        email: source.email,
+        domain: source.domain,
+        isActive: source.is_active,
+        createdAt: new Date(source.created_at)
+      }));
+
+      setSources(mappedSources);
     } catch (error) {
       console.error('Error fetching sources:', error);
     } finally {
@@ -45,8 +57,17 @@ export default function EmailSourceManager({ userId, onSourcesUpdated }: EmailSo
   const addSource = async () => {
     if (!newEmail.trim()) return;
 
+    console.log('Adding source:', newEmail.trim(), 'for user:', userId);
+    
     try {
       const emailDomain = newEmail.includes('@') ? newEmail.split('@')[1] : null;
+      
+      console.log('Inserting email source:', {
+        user_id: userId,
+        email: newEmail.trim(),
+        domain: emailDomain,
+        is_active: true
+      });
       
       const { data, error } = await supabase
         .from('email_sources')
@@ -60,15 +81,30 @@ export default function EmailSourceManager({ userId, onSourcesUpdated }: EmailSo
         .single();
 
       if (error) {
+        console.error('Supabase error:', error);
         throw error;
       }
 
-      setSources([data, ...sources]);
+      console.log('Successfully added source:', data);
+      
+      // Map database fields to TypeScript interface
+      const mappedSource = {
+        id: data.id,
+        userId: data.user_id,
+        email: data.email,
+        domain: data.domain,
+        isActive: data.is_active,
+        createdAt: new Date(data.created_at)
+      };
+      
+      setSources([mappedSource, ...sources]);
       setNewEmail('');
       setIsAdding(false);
       onSourcesUpdated?.();
     } catch (error) {
       console.error('Error adding source:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      alert('Error adding email source: ' + errorMessage);
     }
   };
 
@@ -90,8 +126,18 @@ export default function EmailSourceManager({ userId, onSourcesUpdated }: EmailSo
         throw error;
       }
 
+      // Map database fields to TypeScript interface
+      const mappedSource = {
+        id: data.id,
+        userId: data.user_id,
+        email: data.email,
+        domain: data.domain,
+        isActive: data.is_active,
+        createdAt: new Date(data.created_at)
+      };
+
       setSources(sources.map(source => 
-        source.id === id ? data : source
+        source.id === id ? mappedSource : source
       ));
       setEditingId(null);
       setEditingEmail('');
@@ -114,8 +160,18 @@ export default function EmailSourceManager({ userId, onSourcesUpdated }: EmailSo
         throw error;
       }
 
+      // Map database fields to TypeScript interface
+      const mappedSource = {
+        id: data.id,
+        userId: data.user_id,
+        email: data.email,
+        domain: data.domain,
+        isActive: data.is_active,
+        createdAt: new Date(data.created_at)
+      };
+
       setSources(sources.map(source => 
-        source.id === id ? data : source
+        source.id === id ? mappedSource : source
       ));
       onSourcesUpdated?.();
     } catch (error) {
@@ -185,7 +241,17 @@ export default function EmailSourceManager({ userId, onSourcesUpdated }: EmailSo
         throw error;
       }
 
-      setSources(prev => [data, ...prev]);
+      // Map database fields to TypeScript interface
+      const mappedSource = {
+        id: data.id,
+        userId: data.user_id,
+        email: data.email,
+        domain: data.domain,
+        isActive: data.is_active,
+        createdAt: new Date(data.created_at)
+      };
+      
+      setSources(prev => [mappedSource, ...prev]);
     } catch (error) {
       console.error('Error adding preset source:', error);
     }
