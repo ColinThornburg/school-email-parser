@@ -28,6 +28,12 @@ export default function AuthCallback() {
 
         // Exchange code for tokens
         const gmailService = createGmailService();
+        console.log('Environment variables check:', {
+          hasClientId: !!import.meta.env.VITE_GMAIL_CLIENT_ID,
+          hasClientSecret: !!import.meta.env.VITE_GMAIL_CLIENT_SECRET,
+          clientId: import.meta.env.VITE_GMAIL_CLIENT_ID?.slice(0, 10) + '...',
+          clientSecret: import.meta.env.VITE_GMAIL_CLIENT_SECRET ? 'PRESENT' : 'MISSING'
+        });
         const tokens = await gmailService.exchangeCodeForTokens(code);
 
         setMessage('Getting user information...');
