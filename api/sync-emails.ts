@@ -1,39 +1,62 @@
 import { createClient } from '@supabase/supabase-js';
 import { createLLMProvider } from '../src/lib/llm';
 import { GmailService } from '../src/lib/gmail';
-import crypto from 'crypto';
+import * as crypto from 'crypto';
 import { VercelRequest, VercelResponse } from '@vercel/node';
 
 // Serverless function handler for Vercel
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  console.log('Sync emails function called');
+  
   // Only allow POST requests
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
+    // Check required environment variables
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
+      throw new Error('Missing Supabase environment variables');
+    }
+    console.log('Environment variables check passed');
+
     // Initialize Supabase client
     const supabase = createClient(
-      process.env.SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_KEY!
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_KEY
     );
+    console.log('Supabase client initialized');
 
     // Get user and access token from request
     const { userId, accessToken, refreshToken } = req.body;
+    console.log('Request body parsed, userId:', userId);
 
     if (!userId || !accessToken) {
       return res.status(400).json({ error: 'Missing required parameters' });
     }
 
+    // Check Gmail environment variables
+    if (!process.env.GMAIL_CLIENT_ID || !process.env.GMAIL_CLIENT_SECRET) {
+      throw new Error('Missing Gmail environment variables');
+    }
+
+    // Check OpenAI environment variable
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error('Missing OpenAI API key');
+    }
+
     // Initialize services
+    console.log('Initializing Gmail service');
     const gmailService = new GmailService({
-      clientId: process.env.GMAIL_CLIENT_ID!,
-      clientSecret: process.env.GMAIL_CLIENT_SECRET!,
-      redirectUri: process.env.GMAIL_REDIRECT_URI!,
+      clientId: process.env.GMAIL_CLIENT_ID,
+      clientSecret: process.env.GMAIL_CLIENT_SECRET,
+      redirectUri: process.env.GMAIL_REDIRECT_URI || `${req.headers.host}/auth/callback`,
       scopes: ['https://www.googleapis.com/auth/gmail.readonly']
     });
 
+    console.log('Initializing LLM provider');
     const llmProvider = createLLMProvider('openai');
+    console.log('Services initialized successfully');
 
     // Get email sources for the user
     const { data: emailSources } = await supabase

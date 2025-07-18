@@ -293,13 +293,15 @@ If no dates are found, return an empty array: []`;
 export const createLLMProvider = (provider: 'openai' | 'claude' = 'openai'): LLMProvider => {
   switch (provider) {
     case 'openai':
-      const openaiKey = import.meta.env.VITE_OPENAI_API_KEY;
+      // Check both server and client environment variables
+      const openaiKey = process.env.OPENAI_API_KEY || import.meta.env?.VITE_OPENAI_API_KEY;
       if (!openaiKey) {
         throw new Error('OpenAI API key not found in environment variables');
       }
       return new OpenAIService(openaiKey);
     case 'claude':
-      const claudeKey = import.meta.env.VITE_CLAUDE_API_KEY;
+      // Check both server and client environment variables
+      const claudeKey = process.env.CLAUDE_API_KEY || import.meta.env?.VITE_CLAUDE_API_KEY;
       if (!claudeKey) {
         throw new Error('Claude API key not found in environment variables');
       }
