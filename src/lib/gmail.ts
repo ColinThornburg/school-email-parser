@@ -26,8 +26,7 @@ export class GmailService {
       response_type: 'code',
       scope: this.config.scopes.join(' '),
       access_type: 'offline',
-      prompt: 'consent',
-      approval_prompt: 'force' // Force consent screen to show all permissions
+      prompt: 'consent'
     });
 
     return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
