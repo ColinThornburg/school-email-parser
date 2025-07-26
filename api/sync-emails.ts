@@ -74,8 +74,19 @@ class OpenAIService {
         throw new Error('No response content from OpenAI');
       }
 
-      // Parse JSON response
-      const events = JSON.parse(content);
+      // Clean and parse JSON response (handle markdown code blocks)
+      const cleanedContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      console.log('OpenAI raw response:', content);
+      console.log('Cleaned content for JSON parsing:', cleanedContent);
+      
+      let events;
+      try {
+        events = JSON.parse(cleanedContent);
+      } catch (parseError) {
+        console.error('JSON parsing failed. Raw content:', content);
+        console.error('Cleaned content:', cleanedContent);
+        throw new Error(`Invalid JSON response from OpenAI: ${parseError instanceof Error ? parseError.message : 'Unknown parsing error'}`);
+      }
       
       // Validate and normalize the response
       return this.validateAndNormalizeResponse(events, emailContent.sentDate);
@@ -330,6 +341,12 @@ function estimateTokenUsage(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
+// Helper function to clean OpenAI JSON responses and strip markdown code blocks
+function cleanOpenAIResponse(response: string): string {
+  // Remove markdown code blocks (```json```)
+  return response.replace(/```json\n([\s\S]*?)```/g, '$1');
+}
+
 // Serverless function handler for Vercel
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   console.log('Sync emails function called');
@@ -458,15 +475,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // Build Gmail search query
+    // Build Gmail search query (reduced to 7 days for testing)
     const senderEmails = emailSources.map(source => source.email);
-    const query = `from:(${senderEmails.join(' OR ')}) newer_than:30d`;
+    const query = `from:(${senderEmails.join(' OR ')}) newer_than:7d`;
     console.log(`Gmail search query: ${query}`);
     console.log(`Searching for emails from ${senderEmails.length} configured sources: ${senderEmails.join(', ')}`);
 
-    // Fetch emails from Gmail
+    // Fetch emails from Gmail (reduced to 10 for testing)
     const messagesResponse = await gmailService.listMessages(accessToken, {
-      maxResults: 50,
+      maxResults: 10,
       q: query
     });
 
