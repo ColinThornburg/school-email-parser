@@ -341,12 +341,6 @@ function estimateTokenUsage(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
-// Helper function to clean OpenAI JSON responses and strip markdown code blocks
-function cleanOpenAIResponse(response: string): string {
-  // Remove markdown code blocks (```json```)
-  return response.replace(/```json\n([\s\S]*?)```/g, '$1');
-}
-
 // Serverless function handler for Vercel
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   console.log('Sync emails function called');
@@ -503,13 +497,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const processedEmails: any[] = [];
     const extractedDates: any[] = [];
 
+    console.log(`Starting to process ${messagesResponse.messages.length} messages...`);
+
     // Process each email
-    for (const messageRef of messagesResponse.messages) {
+    for (let i = 0; i < messagesResponse.messages.length; i++) {
+      const messageRef = messagesResponse.messages[i];
+      console.log(`Processing email ${i + 1}/${messagesResponse.messages.length}, ID: ${messageRef.id}`);
+      
       try {
         // Get full message details with retry logic for token refresh
+        console.log(`Fetching message details for ${messageRef.id}...`);
         let message;
         try {
           message = await gmailService.getMessage(accessToken, messageRef.id);
+          console.log(`Successfully fetched message ${messageRef.id}`);
         } catch (gmailError) {
           // If Gmail API call fails with auth error, try to refresh token once
           if (gmailError instanceof Error && 
@@ -533,6 +534,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         
         // Extract content
         const { subject, body, from, date } = gmailService.extractTextFromMessage(message);
+        console.log(`Extracted content - Subject: "${subject}", From: "${from}", Body length: ${body.length} chars`);
         
         // Create content hash for deduplication
         const contentHash = crypto
@@ -540,6 +542,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .update(subject + body + from + date)
           .digest('hex');
 
+        console.log(`Checking for existing email with ID: ${messageRef.id}`);
         // Check if email is already processed
         const { data: existingEmail } = await supabase
           .from('processed_emails')
@@ -548,9 +551,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .single();
 
         if (existingEmail) {
+          console.log(`Email ${messageRef.id} already processed, skipping...`);
           continue; // Skip already processed emails
         }
 
+        console.log(`Email ${messageRef.id} is new, storing in database...`);
         // Store processed email
         const { data: processedEmail, error: emailError } = await supabase
           .from('processed_emails')
@@ -571,9 +576,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           continue;
         }
 
+        console.log(`Successfully stored email ${messageRef.id} in database`);
         processedEmails.push(processedEmail);
 
         // Extract dates using OpenAI
+        console.log(`Calling OpenAI to extract dates from email: "${subject}"`);
         const startTime = Date.now();
         const extractedEvents = await openaiService.extractDates({
           subject,
@@ -583,6 +590,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
 
         const processingTime = Date.now() - startTime;
+        console.log(`OpenAI processing completed in ${processingTime}ms, found ${extractedEvents.length} events`);
 
         // Store processing history
         await supabase
@@ -598,6 +606,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         // Store extracted dates
         for (const event of extractedEvents) {
+          console.log(`Storing extracted event: "${event.title}" on ${event.date}`);
           const { data: extractedDate } = await supabase
             .from('extracted_dates')
             .insert({
@@ -618,11 +627,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
         }
 
+        console.log(`Completed processing email ${i + 1}/${messagesResponse.messages.length}`);
         // Small delay to avoid rate limiting
         await new Promise(resolve => setTimeout(resolve, 100));
 
       } catch (error) {
-        console.error('Error processing email:', error);
+        console.error(`Error processing email ${messageRef.id}:`, error);
         
         // Store failed processing history
         if (processedEmails.length > 0) {
@@ -641,11 +651,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
+    console.log(`Finished processing all emails. Total processed: ${processedEmails.length}, Total dates extracted: ${extractedDates.length}`);
+
     // Update user's last sync timestamp
     await supabase
       .from('users')
       .update({ last_sync_at: new Date().toISOString() })
       .eq('id', userId);
+
+    console.log('Updated user last sync timestamp');
 
     res.status(200).json({
       message: 'Email sync completed successfully',
