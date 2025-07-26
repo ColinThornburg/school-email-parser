@@ -119,10 +119,12 @@ Instructions:
    - Registration deadlines
    - Meeting dates
 
-2. Convert relative dates (like "this Friday", "next week") to absolute dates based on the email sent date
+2. Convert relative dates (like "this Friday", "next week") to absolute dates based on the email sent date: ${emailContent.sentDate}
 3. Include only future dates (after the email sent date)
-4. Provide a confidence score (0-1) for each extracted date
-5. Extract meaningful event titles and descriptions
+4. When parsing dates, be very careful about the day of the week mentioned in the email
+5. If a specific day of the week is mentioned (like "Monday"), make sure the date you extract actually falls on that day
+6. Provide a confidence score (0-1) for each extracted date
+7. Extract meaningful event titles and descriptions
 
 Return a JSON array with this exact structure:
 [

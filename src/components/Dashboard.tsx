@@ -45,8 +45,9 @@ export default function Dashboard() {
 
       const formattedEvents = data.map(event => ({
         ...event,
-        eventDate: new Date(event.event_date),
-        extractedAt: new Date(event.extracted_at)
+        eventDate: new Date(event.event_date + 'T00:00:00'), // Add time to avoid timezone issues
+        extractedAt: new Date(event.extracted_at),
+        confidenceScore: event.confidence_score // Map snake_case to camelCase
       }))
 
       setEvents(formattedEvents)
