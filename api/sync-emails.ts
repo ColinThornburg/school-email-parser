@@ -234,7 +234,18 @@ class GmailService {
     );
 
     if (!response.ok) {
-      throw new Error(`Failed to list messages: ${response.statusText}`);
+      const errorText = await response.text();
+      console.error(`Gmail API listMessages error: ${response.status} ${response.statusText}`, errorText);
+      
+      if (response.status === 401) {
+        throw new Error('Gmail access token expired or invalid');
+      } else if (response.status === 403) {
+        throw new Error('Gmail API access forbidden - check OAuth scopes and permissions');
+      } else if (response.status === 429) {
+        throw new Error('Gmail API rate limit exceeded');
+      } else {
+        throw new Error(`Failed to list messages: ${response.status} ${response.statusText}`);
+      }
     }
 
     const data = await response.json();
@@ -256,7 +267,18 @@ class GmailService {
     );
 
     if (!response.ok) {
-      throw new Error(`Failed to get message: ${response.statusText}`);
+      const errorText = await response.text();
+      console.error(`Gmail API getMessage error: ${response.status} ${response.statusText}`, errorText);
+      
+      if (response.status === 401) {
+        throw new Error('Gmail access token expired or invalid');
+      } else if (response.status === 403) {
+        throw new Error('Gmail API access forbidden - check OAuth scopes and permissions');
+      } else if (response.status === 429) {
+        throw new Error('Gmail API rate limit exceeded');
+      } else {
+        throw new Error(`Failed to get message: ${response.status} ${response.statusText}`);
+      }
     }
 
     return await response.json();
@@ -362,34 +384,60 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Handle token refresh if needed
     let accessToken = initialAccessToken;
-    try {
-      // Test the current token by making a simple API call
-      const testResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-        },
-      });
+    let tokenRefreshed = false;
+    
+    const validateAndRefreshToken = async (token: string): Promise<string> => {
+      try {
+        // Test Gmail API access specifically with a simple call
+        const testResponse = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
 
-      if (!testResponse.ok && refreshToken) {
-        console.log('Access token expired, refreshing...');
-        const refreshedTokens = await gmailService.refreshAccessToken(refreshToken);
-        accessToken = refreshedTokens.accessToken;
-        console.log('Token refreshed successfully');
-      }
-    } catch (error) {
-      console.error('Token validation/refresh error:', error);
-      if (refreshToken) {
-        try {
-          const refreshedTokens = await gmailService.refreshAccessToken(refreshToken);
-          accessToken = refreshedTokens.accessToken;
-          console.log('Token refreshed after error');
-        } catch (refreshError) {
-          console.error('Token refresh failed:', refreshError);
-          return res.status(401).json({ error: 'Authentication failed - unable to refresh token' });
+        if (testResponse.ok) {
+          return token; // Token is valid
         }
-      } else {
-        return res.status(401).json({ error: 'Authentication failed - no refresh token available' });
+
+        // If token is invalid and we have a refresh token, try to refresh
+        if ((testResponse.status === 401 || testResponse.status === 403) && refreshToken && !tokenRefreshed) {
+          console.log('Access token invalid, attempting refresh...');
+          const refreshedTokens = await gmailService.refreshAccessToken(refreshToken);
+          tokenRefreshed = true;
+          console.log('Token refreshed successfully');
+          return refreshedTokens.accessToken;
+        }
+
+        throw new Error(`Gmail API access failed: ${testResponse.status} ${testResponse.statusText}`);
+      } catch (error) {
+        console.error('Token validation error:', error);
+        
+        // Try refresh token as last resort
+        if (refreshToken && !tokenRefreshed) {
+          try {
+            console.log('Attempting token refresh as last resort...');
+            const refreshedTokens = await gmailService.refreshAccessToken(refreshToken);
+            tokenRefreshed = true;
+            console.log('Token refreshed successfully');
+            return refreshedTokens.accessToken;
+          } catch (refreshError) {
+            console.error('Token refresh failed:', refreshError);
+            throw new Error('Authentication failed - unable to refresh Gmail access token');
+          }
+        }
+        
+        throw error;
       }
+    };
+
+    try {
+      accessToken = await validateAndRefreshToken(accessToken);
+    } catch (authError) {
+      console.error('Authentication error:', authError);
+      return res.status(401).json({ 
+        error: 'Authentication failed', 
+        message: authError instanceof Error ? authError.message : 'Gmail API access denied'
+      });
     }
 
     // Get email sources for the user
@@ -413,6 +461,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Build Gmail search query
     const senderEmails = emailSources.map(source => source.email);
     const query = `from:(${senderEmails.join(' OR ')}) newer_than:30d`;
+    console.log(`Gmail search query: ${query}`);
+    console.log(`Searching for emails from ${senderEmails.length} configured sources: ${senderEmails.join(', ')}`);
 
     // Fetch emails from Gmail
     const messagesResponse = await gmailService.listMessages(accessToken, {
@@ -420,14 +470,49 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       q: query
     });
 
+    console.log(`Gmail API returned ${messagesResponse.messages.length} messages`);
+    
+    if (!messagesResponse.messages || messagesResponse.messages.length === 0) {
+      console.log('No messages found matching the search query');
+      return res.status(200).json({
+        message: 'No emails found matching the configured sources',
+        processed: 0,
+        extracted: 0,
+        emails: [],
+        dates: []
+      });
+    }
+
     const processedEmails: any[] = [];
     const extractedDates: any[] = [];
 
     // Process each email
     for (const messageRef of messagesResponse.messages) {
       try {
-        // Get full message details
-        const message = await gmailService.getMessage(accessToken, messageRef.id);
+        // Get full message details with retry logic for token refresh
+        let message;
+        try {
+          message = await gmailService.getMessage(accessToken, messageRef.id);
+        } catch (gmailError) {
+          // If Gmail API call fails with auth error, try to refresh token once
+          if (gmailError instanceof Error && 
+              (gmailError.message.includes('expired') || gmailError.message.includes('invalid') || gmailError.message.includes('forbidden')) &&
+              refreshToken && !tokenRefreshed) {
+            console.log('Gmail API call failed, attempting token refresh...');
+            try {
+              const refreshedTokens = await gmailService.refreshAccessToken(refreshToken);
+              accessToken = refreshedTokens.accessToken;
+              tokenRefreshed = true;
+              console.log('Token refreshed, retrying Gmail API call...');
+              message = await gmailService.getMessage(accessToken, messageRef.id);
+            } catch (refreshError) {
+              console.error('Token refresh failed during processing:', refreshError);
+              throw gmailError; // Re-throw original error
+            }
+          } else {
+            throw gmailError;
+          }
+        }
         
         // Extract content
         const { subject, body, from, date } = gmailService.extractTextFromMessage(message);
