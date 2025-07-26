@@ -63,6 +63,18 @@ export default function Dashboard() {
     window.location.href = authUrl
   }
 
+  const handleReAuth = () => {
+    // Clear stored user data to force fresh authentication
+    localStorage.removeItem('user')
+    setUser(null)
+    setIsAuthenticated(false)
+    
+    // Initiate fresh OAuth flow
+    const gmailService = createGmailService()
+    const authUrl = gmailService.getAuthUrl()
+    window.location.href = authUrl
+  }
+
   const handleSyncEmails = async () => {
     if (!user) return
 
@@ -98,10 +110,15 @@ export default function Dashboard() {
     } catch (error) {
       console.error('Error syncing emails:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-      if (errorMessage.includes('fetch')) {
-        alert('API endpoint not available locally. Please test on the deployed Vercel app.')
+      
+      // Check if it's a scope/authentication error
+      if (errorMessage.includes('insufficient') || 
+          errorMessage.includes('forbidden') || 
+          errorMessage.includes('scopes') ||
+          errorMessage.includes('Authentication failed')) {
+        alert(`Authentication Error: ${errorMessage}\n\nPlease click "Re-authenticate Gmail" to fix permission issues.`)
       } else {
-        alert('Error syncing emails. Please try again.')
+        alert(`Error: ${errorMessage}`)
       }
     } finally {
       setIsSyncing(false)
@@ -385,6 +402,15 @@ export default function Dashboard() {
                     <Mail className="h-4 w-4 mr-2" />
                   )}
                   {isSyncing ? 'Syncing...' : 'Sync Emails'}
+                </Button>
+                <Button 
+                  className="w-full" 
+                  variant="outline"
+                  onClick={handleReAuth}
+                  disabled={isSyncing}
+                >
+                  <LogIn className="h-4 w-4 mr-2" />
+                  Re-authenticate Gmail
                 </Button>
                 <Button 
                   className="w-full" 
