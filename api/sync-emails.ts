@@ -26,6 +26,118 @@ interface GmailTokens {
   expiresAt: number;
 }
 
+// Helper function to create event hash for deduplication
+function createEventHash(userId: string, title: string, date: string, time?: string): string {
+  const eventKey = `${userId}:${title.toLowerCase().trim()}:${date}:${time || 'no-time'}`;
+  return crypto.createHash('md5').update(eventKey).digest('hex');
+}
+
+// Helper function to clean up duplicate events
+async function cleanupDuplicateEvents(supabase: any, userId: string): Promise<number> {
+  console.log('Starting duplicate event cleanup...');
+  
+  // Find duplicate events based on user_id, event_title, event_date, and event_time
+  const { data: duplicates, error } = await supabase.rpc('find_duplicate_events', {
+    p_user_id: userId
+  });
+
+  if (error) {
+    console.error('Error finding duplicates:', error);
+    // If the RPC doesn't exist, fall back to manual cleanup
+    return await manualCleanupDuplicates(supabase, userId);
+  }
+
+  let deletedCount = 0;
+  for (const duplicate of duplicates || []) {
+    // Keep the oldest event (first extracted) and delete the rest
+    const { error: deleteError } = await supabase
+      .from('extracted_dates')
+      .delete()
+      .eq('id', duplicate.id);
+    
+    if (!deleteError) {
+      deletedCount++;
+    }
+  }
+
+  console.log(`Cleaned up ${deletedCount} duplicate events`);
+  return deletedCount;
+}
+
+// Manual fallback cleanup method
+async function manualCleanupDuplicates(supabase: any, userId: string): Promise<number> {
+  console.log('Performing manual duplicate cleanup...');
+  
+  // Get all events for the user
+  const { data: events, error } = await supabase
+    .from('extracted_dates')
+    .select('*')
+    .eq('user_id', userId)
+    .order('extracted_at', { ascending: true });
+
+  if (error) {
+    console.error('Error fetching events for cleanup:', error);
+    return 0;
+  }
+
+  const eventMap = new Map<string, any>();
+  const duplicatesToDelete: string[] = [];
+
+  // Group events by their unique identifier
+  for (const event of events) {
+    const eventKey = `${event.event_title.toLowerCase().trim()}:${event.event_date}:${event.event_time || 'no-time'}`;
+    
+    if (eventMap.has(eventKey)) {
+      // This is a duplicate, mark for deletion
+      duplicatesToDelete.push(event.id);
+    } else {
+      // This is the first occurrence, keep it
+      eventMap.set(eventKey, event);
+    }
+  }
+
+  // Delete duplicates
+  let deletedCount = 0;
+  for (const eventId of duplicatesToDelete) {
+    const { error: deleteError } = await supabase
+      .from('extracted_dates')
+      .delete()
+      .eq('id', eventId);
+    
+    if (!deleteError) {
+      deletedCount++;
+    }
+  }
+
+  console.log(`Manually cleaned up ${deletedCount} duplicate events`);
+  return deletedCount;
+}
+
+// Helper function to check if event already exists
+async function eventExists(
+  supabase: any, 
+  userId: string, 
+  title: string, 
+  date: string, 
+  time?: string
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('extracted_dates')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('event_title', title.trim())
+    .eq('event_date', date)
+    .eq('event_time', time || null)
+    .limit(1);
+
+  if (error) {
+    console.error('Error checking event existence:', error);
+    return false;
+  }
+
+  return data && data.length > 0;
+}
+
 // OpenAI Service class
 class OpenAIService {
   private apiKey: string;
@@ -367,8 +479,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.log('Supabase client initialized');
 
     // Get user and access token from request
-    const { userId, accessToken: initialAccessToken, refreshToken } = req.body;
-    console.log('Request body parsed, userId:', userId);
+    const { userId, accessToken: initialAccessToken, refreshToken, forceReprocess = false } = req.body;
+    console.log('Request body parsed, userId:', userId, 'forceReprocess:', forceReprocess);
 
     if (!userId || !initialAccessToken) {
       return res.status(400).json({ error: 'Missing required parameters' });
@@ -394,6 +506,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.log('Initializing OpenAI service');
     const openaiService = new OpenAIService(process.env.OPENAI_API_KEY);
     console.log('Services initialized successfully');
+
+    // If force reprocess is enabled, clean up existing data first
+    let cleanupCount = 0;
+    if (forceReprocess) {
+      console.log('Force reprocess enabled, cleaning up existing data...');
+      
+      // Clean up duplicate events first
+      cleanupCount = await cleanupDuplicateEvents(supabase, userId);
+      
+      // Optionally, if user wants to completely start over, remove all processed emails
+      // This would cause all emails to be reprocessed
+      // const { error: deleteEmailsError } = await supabase
+      //   .from('processed_emails')
+      //   .delete()
+      //   .eq('user_id', userId);
+      
+      // const { error: deleteDatesError } = await supabase
+      //   .from('extracted_dates')
+      //   .delete()
+      //   .eq('user_id', userId);
+      
+      console.log(`Cleanup completed. Removed ${cleanupCount} duplicate events.`);
+    } else {
+      // Even on normal sync, clean up duplicates
+      console.log('Performing routine duplicate cleanup...');
+      cleanupCount = await cleanupDuplicateEvents(supabase, userId);
+    }
 
     // Handle token refresh if needed
     let accessToken = initialAccessToken;
@@ -467,7 +606,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!emailSources || emailSources.length === 0) {
       return res.status(200).json({ 
         message: 'No email sources configured', 
-        processed: 0 
+        processed: 0,
+        duplicatesRemoved: cleanupCount
       });
     }
 
@@ -491,6 +631,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         message: 'No emails found matching the configured sources',
         processed: 0,
         extracted: 0,
+        duplicatesRemoved: cleanupCount,
         emails: [],
         dates: []
       });
@@ -498,6 +639,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const processedEmails: any[] = [];
     const extractedDates: any[] = [];
+    let skippedDuplicateEmails = 0;
+    let skippedDuplicateEvents = 0;
 
     console.log(`Starting to process ${messagesResponse.messages.length} messages...`);
 
@@ -545,30 +688,50 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .digest('hex');
 
         console.log(`Checking for existing email with ID: ${messageRef.id}`);
-        // Check if email is already processed
-        const { data: existingEmail } = await supabase
-          .from('processed_emails')
-          .select('id')
-          .eq('gmail_message_id', messageRef.id)
-          .single();
+        // Check if email is already processed (unless force reprocess is enabled)
+        if (!forceReprocess) {
+          const { data: existingEmail } = await supabase
+            .from('processed_emails')
+            .select('id')
+            .eq('gmail_message_id', messageRef.id)
+            .single();
 
-        if (existingEmail) {
-          console.log(`Email ${messageRef.id} already processed, skipping...`);
-          continue; // Skip already processed emails
+          if (existingEmail) {
+            console.log(`Email ${messageRef.id} already processed, skipping...`);
+            skippedDuplicateEmails++;
+            continue; // Skip already processed emails
+          }
+
+          // Also check by content hash for more robust deduplication
+          const { data: existingByHash } = await supabase
+            .from('processed_emails')
+            .select('id')
+            .eq('content_hash', contentHash)
+            .eq('user_id', userId)
+            .single();
+
+          if (existingByHash) {
+            console.log(`Email with same content already processed, skipping...`);
+            skippedDuplicateEmails++;
+            continue;
+          }
         }
 
         console.log(`Email ${messageRef.id} is new, storing in database...`);
-        // Store processed email
+        // Store processed email (or update if force reprocessing)
         const { data: processedEmail, error: emailError } = await supabase
           .from('processed_emails')
-          .insert({
+          .upsert({
             user_id: userId,
             gmail_message_id: messageRef.id,
             sender_email: from,
             subject: subject,
             sent_date: new Date(date).toISOString(),
             content_hash: contentHash,
-            has_attachments: message.payload.parts?.some((part: any) => part.filename) || false
+            has_attachments: message.payload.parts?.some((part: any) => part.filename) || false,
+            processed_at: new Date().toISOString()
+          }, {
+            onConflict: 'gmail_message_id'
           })
           .select()
           .single();
@@ -606,12 +769,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             success_status: true
           });
 
-        // Store extracted dates
+        // Store extracted dates with deduplication
         for (const event of extractedEvents) {
+          console.log(`Checking if event already exists: "${event.title}" on ${event.date}`);
+          
+          // Check if this exact event already exists for this user
+          const exists = await eventExists(supabase, userId, event.title, event.date, event.time);
+          
+          if (exists && !forceReprocess) {
+            console.log(`Event "${event.title}" on ${event.date} already exists, skipping...`);
+            skippedDuplicateEvents++;
+            continue;
+          }
+
           console.log(`Storing extracted event: "${event.title}" on ${event.date}`);
-          const { data: extractedDate } = await supabase
+          const { data: extractedDate, error: dateError } = await supabase
             .from('extracted_dates')
-            .insert({
+            .upsert({
               email_id: processedEmail.id,
               user_id: userId,
               event_title: event.title,
@@ -619,13 +793,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               event_time: event.time,
               description: event.description,
               confidence_score: event.confidence,
-              is_verified: false
+              is_verified: false,
+              extracted_at: new Date().toISOString()
+            }, {
+              onConflict: 'user_id,event_title,event_date,event_time',
+              ignoreDuplicates: !forceReprocess
             })
             .select()
             .single();
 
-          if (extractedDate) {
+          if (!dateError && extractedDate) {
             extractedDates.push(extractedDate);
+          } else if (dateError) {
+            console.error('Error storing extracted date:', dateError);
           }
         }
 
@@ -653,7 +833,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    console.log(`Finished processing all emails. Total processed: ${processedEmails.length}, Total dates extracted: ${extractedDates.length}`);
+    console.log(`Finished processing all emails. Total processed: ${processedEmails.length}, Total dates extracted: ${extractedDates.length}, Skipped duplicate emails: ${skippedDuplicateEmails}, Skipped duplicate events: ${skippedDuplicateEvents}`);
 
     // Update user's last sync timestamp
     await supabase
@@ -663,10 +843,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     console.log('Updated user last sync timestamp');
 
+    const responseMessage = forceReprocess 
+      ? 'Email reprocessing completed successfully'
+      : 'Email sync completed successfully';
+
     res.status(200).json({
-      message: 'Email sync completed successfully',
+      message: responseMessage,
       processed: processedEmails.length,
       extracted: extractedDates.length,
+      duplicatesRemoved: cleanupCount,
+      skippedDuplicateEmails,
+      skippedDuplicateEvents,
+      forceReprocess,
       emails: processedEmails,
       dates: extractedDates
     });

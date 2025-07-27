@@ -83,23 +83,75 @@ CREATE POLICY "Users can view own profile" ON users FOR SELECT USING (auth.uid()
 CREATE POLICY "Users can update own profile" ON users FOR UPDATE USING (auth.uid() = id);
 
 -- Policies for email_sources table
-CREATE POLICY "Users can view own email sources" ON email_sources FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "Users can insert own email sources" ON email_sources FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "Users can update own email sources" ON email_sources FOR UPDATE USING (auth.uid() = user_id);
-CREATE POLICY "Users can delete own email sources" ON email_sources FOR DELETE USING (auth.uid() = user_id);
+ALTER TABLE email_sources DISABLE ROW LEVEL SECURITY;
+-- CREATE POLICY "Users can view own email sources" ON email_sources FOR SELECT USING (auth.uid() = user_id);
+-- CREATE POLICY "Users can insert own email sources" ON email_sources FOR INSERT WITH CHECK (auth.uid() = user_id);
+-- CREATE POLICY "Users can update own email sources" ON email_sources FOR UPDATE USING (auth.uid() = user_id);
+-- CREATE POLICY "Users can delete own email sources" ON email_sources FOR DELETE USING (auth.uid() = user_id);
 
 -- Policies for processed_emails table
-CREATE POLICY "Users can view own processed emails" ON processed_emails FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "Users can insert own processed emails" ON processed_emails FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "Users can update own processed emails" ON processed_emails FOR UPDATE USING (auth.uid() = user_id);
-CREATE POLICY "Users can delete own processed emails" ON processed_emails FOR DELETE USING (auth.uid() = user_id);
+ALTER TABLE processed_emails DISABLE ROW LEVEL SECURITY;
+-- CREATE POLICY "Users can view own processed emails" ON processed_emails FOR SELECT USING (auth.uid() = user_id);
+-- CREATE POLICY "Users can insert own processed emails" ON processed_emails FOR INSERT WITH CHECK (auth.uid() = user_id);
+-- CREATE POLICY "Users can update own processed emails" ON processed_emails FOR UPDATE USING (auth.uid() = user_id);
+-- CREATE POLICY "Users can delete own processed emails" ON processed_emails FOR DELETE USING (auth.uid() = user_id);
 
 -- Policies for extracted_dates table
-CREATE POLICY "Users can view own extracted dates" ON extracted_dates FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "Users can insert own extracted dates" ON extracted_dates FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "Users can update own extracted dates" ON extracted_dates FOR UPDATE USING (auth.uid() = user_id);
-CREATE POLICY "Users can delete own extracted dates" ON extracted_dates FOR DELETE USING (auth.uid() = user_id);
+ALTER TABLE extracted_dates DISABLE ROW LEVEL SECURITY;
+-- CREATE POLICY "Users can view own extracted dates" ON extracted_dates FOR SELECT USING (auth.uid() = user_id);
+-- CREATE POLICY "Users can insert own extracted dates" ON extracted_dates FOR INSERT WITH CHECK (auth.uid() = user_id);
+-- CREATE POLICY "Users can update own extracted dates" ON extracted_dates FOR UPDATE USING (auth.uid() = user_id);
+-- CREATE POLICY "Users can delete own extracted dates" ON extracted_dates FOR DELETE USING (auth.uid() = user_id);
 
 -- Policies for processing_history table
+-- Drop existing policies if they exist to avoid conflicts
+DROP POLICY IF EXISTS "Users can view own processing history" ON processing_history;
+DROP POLICY IF EXISTS "Users can insert own processing history" ON processing_history;
+
 CREATE POLICY "Users can view own processing history" ON processing_history FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "Users can insert own processing history" ON processing_history FOR INSERT WITH CHECK (auth.uid() = user_id); 
+CREATE POLICY "Users can insert own processing history" ON processing_history FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+-- Add unique constraint to prevent duplicate events (only if it doesn't exist)
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints 
+        WHERE constraint_name = 'unique_user_event' 
+        AND table_name = 'extracted_dates'
+    ) THEN
+        ALTER TABLE extracted_dates ADD CONSTRAINT unique_user_event 
+        UNIQUE (user_id, event_title, event_date, event_time);
+    END IF;
+END $$;
+
+-- Function to find duplicate events (keeps oldest, marks others for deletion)
+CREATE OR REPLACE FUNCTION find_duplicate_events(p_user_id UUID)
+RETURNS TABLE(id UUID, event_title TEXT, event_date DATE, event_time TIME, extracted_at TIMESTAMP WITH TIME ZONE) 
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RETURN QUERY
+  WITH ranked_events AS (
+    SELECT 
+      e.id,
+      e.event_title,
+      e.event_date,
+      e.event_time,
+      e.extracted_at,
+      ROW_NUMBER() OVER (
+        PARTITION BY LOWER(TRIM(e.event_title)), e.event_date, COALESCE(e.event_time, '00:00:00'::TIME)
+        ORDER BY e.extracted_at ASC
+      ) as rn
+    FROM extracted_dates e
+    WHERE e.user_id = p_user_id
+  )
+  SELECT 
+    r.id,
+    r.event_title,
+    r.event_date,
+    r.event_time,
+    r.extracted_at
+  FROM ranked_events r
+  WHERE r.rn > 1; -- Only return duplicates (keep the first occurrence)
+END;
+$$; 

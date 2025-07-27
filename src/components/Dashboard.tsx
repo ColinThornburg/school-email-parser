@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
-import { Calendar, Settings, Mail, Clock, CheckCircle, LogIn, RefreshCw } from 'lucide-react'
+import Calendar from './ui/calendar'
+import { Calendar as CalendarIcon, Settings, Mail, Clock, CheckCircle, LogIn, RefreshCw, X } from 'lucide-react'
 import { ExtractedDate } from '../types'
 import { formatDate } from '../lib/utils'
 import { createGmailService } from '../lib/gmail'
@@ -16,6 +17,7 @@ export default function Dashboard() {
   const [isLoading, setIsLoading] = useState(true)
   const [isSyncing, setIsSyncing] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [selectedEvent, setSelectedEvent] = useState<ExtractedDate | null>(null)
 
   useEffect(() => {
     // Check if user is authenticated
@@ -58,6 +60,14 @@ export default function Dashboard() {
     }
   }
 
+  const handleEventClick = (event: ExtractedDate) => {
+    setSelectedEvent(event)
+  }
+
+  const closeEventModal = () => {
+    setSelectedEvent(null)
+  }
+
   const handleGmailAuth = () => {
     const gmailService = createGmailService()
     const authUrl = gmailService.getAuthUrl()
@@ -89,7 +99,8 @@ export default function Dashboard() {
         body: JSON.stringify({
           userId: user.id,
           accessToken: user.accessToken,
-          refreshToken: user.refreshToken
+          refreshToken: user.refreshToken,
+          forceReprocess: false
         }),
       })
 
@@ -107,9 +118,81 @@ export default function Dashboard() {
       // Refresh events after sync
       await fetchEvents(user.id)
       
-      alert(`Sync completed! Processed ${result.processed} emails and extracted ${result.extracted} dates.`)
+      let message = `Sync completed! Processed ${result.processed} emails and extracted ${result.extracted} dates.`
+      if (result.duplicatesRemoved > 0) {
+        message += `\nRemoved ${result.duplicatesRemoved} duplicate events.`
+      }
+      if (result.skippedDuplicateEmails > 0) {
+        message += `\nSkipped ${result.skippedDuplicateEmails} already processed emails.`
+      }
+      if (result.skippedDuplicateEvents > 0) {
+        message += `\nSkipped ${result.skippedDuplicateEvents} duplicate events.`
+      }
+      
+      alert(message)
     } catch (error) {
       console.error('Error syncing emails:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      
+      // Check if it's a scope/authentication error
+      if (errorMessage.includes('insufficient') || 
+          errorMessage.includes('forbidden') || 
+          errorMessage.includes('scopes') ||
+          errorMessage.includes('Authentication failed')) {
+        alert(`Authentication Error: ${errorMessage}\n\nPlease click "Re-authenticate Gmail" to fix permission issues.`)
+      } else {
+        alert(`Error: ${errorMessage}`)
+      }
+    } finally {
+      setIsSyncing(false)
+    }
+  }
+
+  const handleReprocessEmails = async () => {
+    if (!user) return
+
+    const confirmed = confirm(
+      'This will reprocess all emails and clean up duplicate events. This may take a while. Continue?'
+    )
+    if (!confirmed) return
+
+    setIsSyncing(true)
+    try {
+      const response = await fetch('/api/sync-emails', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: user.id,
+          accessToken: user.accessToken,
+          refreshToken: user.refreshToken,
+          forceReprocess: true
+        }),
+      })
+
+      if (!response.ok) {
+        // If we're running locally and the API doesn't exist, show a helpful message
+        if (response.status === 404) {
+          alert('API endpoint not available locally. Please test on the deployed Vercel app.')
+          return
+        }
+        throw new Error('Failed to reprocess emails')
+      }
+
+      const result = await response.json()
+      
+      // Refresh events after reprocessing
+      await fetchEvents(user.id)
+      
+      let message = `Reprocessing completed! Processed ${result.processed} emails and extracted ${result.extracted} dates.`
+      if (result.duplicatesRemoved > 0) {
+        message += `\nRemoved ${result.duplicatesRemoved} duplicate events during cleanup.`
+      }
+      
+      alert(message)
+    } catch (error) {
+      console.error('Error reprocessing emails:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       
       // Check if it's a scope/authentication error
@@ -197,7 +280,7 @@ export default function Dashboard() {
             variant={view === 'calendar' ? 'default' : 'outline'}
             onClick={() => setView('calendar')}
           >
-            <Calendar className="h-4 w-4 mr-2" />
+            <CalendarIcon className="h-4 w-4 mr-2" />
             Calendar
           </Button>
           <Button
@@ -225,7 +308,7 @@ export default function Dashboard() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Events</CardTitle>
-            <Calendar className="h-4 w-4 text-muted-foreground" />
+            <CalendarIcon className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{events.length}</div>
@@ -302,11 +385,10 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               {view === 'calendar' ? (
-                <div className="text-center py-12 text-muted-foreground">
-                  <Calendar className="h-16 w-16 mx-auto mb-4" />
-                  <p>Calendar component will be implemented here</p>
-                  <p className="text-sm">Integration with FullCalendar or similar</p>
-                </div>
+                <Calendar 
+                  events={events} 
+                  onEventClick={handleEventClick}
+                />
               ) : (
                 <div className="space-y-4">
                   {events.length === 0 ? (
@@ -321,7 +403,8 @@ export default function Dashboard() {
                     events.map((event) => (
                       <div
                         key={event.id}
-                        className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50"
+                        className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 cursor-pointer"
+                        onClick={() => handleEventClick(event)}
                       >
                         <div className="flex-1">
                           <h3 className="font-semibold">{event.eventTitle}</h3>
@@ -370,7 +453,7 @@ export default function Dashboard() {
                 {upcomingEvents.map((event) => (
                   <div key={event.id} className="flex items-start gap-3">
                     <div className="flex-shrink-0 w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center">
-                      <Calendar className="h-5 w-5 text-primary" />
+                      <CalendarIcon className="h-5 w-5 text-primary" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-medium truncate">{event.eventTitle}</p>
@@ -407,6 +490,15 @@ export default function Dashboard() {
                 <Button 
                   className="w-full" 
                   variant="outline"
+                  onClick={handleReprocessEmails}
+                  disabled={isSyncing}
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Reprocess Emails
+                </Button>
+                <Button 
+                  className="w-full" 
+                  variant="outline"
                   onClick={handleReAuth}
                   disabled={isSyncing}
                 >
@@ -422,7 +514,7 @@ export default function Dashboard() {
                   {showSettings ? 'Hide Settings' : 'Manage Sources'}
                 </Button>
                 <Button className="w-full" variant="outline">
-                  <Calendar className="h-4 w-4 mr-2" />
+                  <CalendarIcon className="h-4 w-4 mr-2" />
                   Export Calendar
                 </Button>
               </div>
@@ -430,6 +522,76 @@ export default function Dashboard() {
           </Card>
         </div>
       </div>
+
+      {/* Event Details Modal */}
+      {selectedEvent && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold">Event Details</h2>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={closeEventModal}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <h3 className="font-semibold text-lg">{selectedEvent.eventTitle}</h3>
+              </div>
+              
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <CalendarIcon className="h-4 w-4" />
+                <span>{formatDate(selectedEvent.eventDate)}</span>
+                {selectedEvent.eventTime && (
+                  <>
+                    <Clock className="h-4 w-4 ml-2" />
+                    <span>{selectedEvent.eventTime}</span>
+                  </>
+                )}
+              </div>
+              
+              {selectedEvent.description && (
+                <div>
+                  <h4 className="font-medium mb-1">Description</h4>
+                  <p className="text-sm text-muted-foreground">{selectedEvent.description}</p>
+                </div>
+              )}
+              
+              <div className="flex items-center justify-between pt-4 border-t">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">Confidence:</span>
+                  <span
+                    className={`px-2 py-1 rounded-full text-xs ${
+                      selectedEvent.confidenceScore >= 0.9
+                        ? 'bg-green-100 text-green-800'
+                        : selectedEvent.confidenceScore >= 0.8
+                        ? 'bg-yellow-100 text-yellow-800'
+                        : 'bg-red-100 text-red-800'
+                    }`}
+                  >
+                    {Math.round(selectedEvent.confidenceScore * 100)}%
+                  </span>
+                </div>
+                
+                {selectedEvent.isVerified && (
+                  <div className="flex items-center gap-1 text-green-600">
+                    <CheckCircle className="h-4 w-4" />
+                    <span className="text-sm">Verified</span>
+                  </div>
+                )}
+              </div>
+              
+              <div className="text-xs text-muted-foreground">
+                Extracted: {selectedEvent.extractedAt.toLocaleDateString()}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 } 
