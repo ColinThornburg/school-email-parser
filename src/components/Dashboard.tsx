@@ -216,17 +216,6 @@ export default function Dashboard() {
     setEvents([])
   }
 
-  const upcomingEvents = events
-    .filter(event => new Date(event.eventDate) >= new Date())
-    .sort((a, b) => new Date(a.eventDate).getTime() - new Date(b.eventDate).getTime())
-    .slice(0, 5)
-
-  const todayEvents = events.filter(event => {
-    const today = new Date()
-    const eventDate = new Date(event.eventDate)
-    return eventDate.toDateString() === today.toDateString()
-  })
-
   // Show loading state
   if (isLoading) {
     return (
@@ -324,7 +313,11 @@ export default function Dashboard() {
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{todayEvents.length}</div>
+            <div className="text-2xl font-bold">{events.filter(event => {
+              const today = new Date()
+              const eventDate = new Date(event.eventDate)
+              return eventDate.toDateString() === today.toDateString()
+            }).length}</div>
             <p className="text-xs text-muted-foreground">
               Events scheduled
             </p>
@@ -337,9 +330,9 @@ export default function Dashboard() {
             <Mail className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{upcomingEvents.length}</div>
+            <div className="text-2xl font-bold">{events.filter(event => new Date(event.eventDate) >= new Date()).length}</div>
             <p className="text-xs text-muted-foreground">
-              Next 5 events
+              Future events
             </p>
           </CardContent>
         </Card>
@@ -374,13 +367,13 @@ export default function Dashboard() {
       )}
 
       {/* Main Content */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Calendar/List View */}
-        <div className="lg:col-span-2">
+      <div className="grid grid-cols-1 gap-6">
+        {/* Calendar/List View - Now takes full width */}
+        <div className="w-full">
           <Card>
             <CardHeader>
               <CardTitle>
-                {view === 'calendar' ? 'Calendar View' : 'Event List'}
+                {view === 'calendar' ? 'Weekly Calendar View' : 'Event List'}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -441,86 +434,55 @@ export default function Dashboard() {
           </Card>
         </div>
 
-        {/* Sidebar */}
-        <div className="space-y-6">
-          {/* Upcoming Events */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Upcoming Events</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {upcomingEvents.map((event) => (
-                  <div key={event.id} className="flex items-start gap-3">
-                    <div className="flex-shrink-0 w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center">
-                      <CalendarIcon className="h-5 w-5 text-primary" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate">{event.eventTitle}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {formatDate(event.eventDate)}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Quick Actions */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Quick Actions</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                <Button 
-                  className="w-full" 
-                  variant="outline" 
-                  onClick={handleSyncEmails}
-                  disabled={isSyncing}
-                >
-                  {isSyncing ? (
-                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <Mail className="h-4 w-4 mr-2" />
-                  )}
-                  {isSyncing ? 'Syncing...' : 'Sync Emails'}
-                </Button>
-                <Button 
-                  className="w-full" 
-                  variant="outline"
-                  onClick={handleReprocessEmails}
-                  disabled={isSyncing}
-                >
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Reprocess Emails
-                </Button>
-                <Button 
-                  className="w-full" 
-                  variant="outline"
-                  onClick={handleReAuth}
-                  disabled={isSyncing}
-                >
-                  <LogIn className="h-4 w-4 mr-2" />
-                  Re-authenticate Gmail
-                </Button>
-                <Button 
-                  className="w-full" 
-                  variant="outline"
-                  onClick={() => setShowSettings(!showSettings)}
-                >
-                  <Settings className="h-4 w-4 mr-2" />
-                  {showSettings ? 'Hide Settings' : 'Manage Sources'}
-                </Button>
-                <Button className="w-full" variant="outline">
-                  <CalendarIcon className="h-4 w-4 mr-2" />
-                  Export Calendar
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        {/* Quick Actions - Moved to bottom as a horizontal row */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Quick Actions</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <Button 
+                className="w-full" 
+                variant="outline" 
+                onClick={handleSyncEmails}
+                disabled={isSyncing}
+              >
+                {isSyncing ? (
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Mail className="h-4 w-4 mr-2" />
+                )}
+                {isSyncing ? 'Syncing...' : 'Sync Emails'}
+              </Button>
+              <Button 
+                className="w-full" 
+                variant="outline"
+                onClick={handleReprocessEmails}
+                disabled={isSyncing}
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Reprocess Emails
+              </Button>
+              <Button 
+                className="w-full" 
+                variant="outline"
+                onClick={handleReAuth}
+                disabled={isSyncing}
+              >
+                <LogIn className="h-4 w-4 mr-2" />
+                Re-authenticate Gmail
+              </Button>
+              <Button 
+                className="w-full" 
+                variant="outline"
+                onClick={() => setShowSettings(!showSettings)}
+              >
+                <Settings className="h-4 w-4 mr-2" />
+                {showSettings ? 'Hide Settings' : 'Manage Sources'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Event Details Modal */}
