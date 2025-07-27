@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { ChevronLeft, ChevronRight, Clock } from 'lucide-react'
 import { Button } from './button'
 import { ExtractedDate } from '../../types'
