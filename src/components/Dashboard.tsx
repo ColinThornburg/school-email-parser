@@ -37,7 +37,13 @@ export default function Dashboard() {
     try {
       const { data, error } = await supabase
         .from('extracted_dates')
-        .select('*')
+        .select(`
+          *,
+          processed_emails!inner(
+            sender_email,
+            subject
+          )
+        `)
         .eq('user_id', userId)
         .order('event_date', { ascending: true })
 
@@ -49,7 +55,9 @@ export default function Dashboard() {
         ...event,
         eventDate: new Date(event.event_date + 'T00:00:00'), // Add time to avoid timezone issues
         extractedAt: new Date(event.extracted_at),
-        confidenceScore: event.confidence_score // Map snake_case to camelCase
+        confidenceScore: event.confidence_score, // Map snake_case to camelCase
+        senderEmail: event.processed_emails.sender_email,
+        senderName: event.processed_emails.sender_email.split('@')[0] // Extract name from email
       }))
 
       setEvents(formattedEvents)
@@ -405,6 +413,11 @@ export default function Dashboard() {
                             {formatDate(event.eventDate)}
                             {event.eventTime && ` at ${event.eventTime}`}
                           </p>
+                          {event.senderName && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              From: {event.senderName}
+                            </p>
+                          )}
                           {event.description && (
                             <p className="text-sm mt-1">{event.description}</p>
                           )}
@@ -520,6 +533,20 @@ export default function Dashboard() {
                 <div>
                   <h4 className="font-medium mb-1">Description</h4>
                   <p className="text-sm text-muted-foreground">{selectedEvent.description}</p>
+                </div>
+              )}
+              
+              {selectedEvent.senderName && (
+                <div>
+                  <h4 className="font-medium mb-1">Email Source</h4>
+                  <p className="text-sm text-muted-foreground">
+                    From: {selectedEvent.senderName}
+                    {selectedEvent.senderEmail && (
+                      <span className="block text-xs opacity-75">
+                        {selectedEvent.senderEmail}
+                      </span>
+                    )}
+                  </p>
                 </div>
               )}
               

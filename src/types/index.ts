@@ -39,6 +39,9 @@ export interface ExtractedDate {
   confidenceScore: number
   extractedAt: Date
   isVerified: boolean
+  // Sender information from the email
+  senderEmail?: string
+  senderName?: string
 }
 
 export interface ProcessingHistory {

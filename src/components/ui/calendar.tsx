@@ -198,6 +198,11 @@ export default function Calendar({ events, onEventClick }: CalendarProps) {
                     <div className="font-medium leading-tight">
                       {event.eventTitle}
                     </div>
+                    {event.senderName && (
+                      <div className="mt-1 text-xs opacity-60 font-medium">
+                        From: {event.senderName}
+                      </div>
+                    )}
                     {event.description && (
                       <div className="mt-1 text-xs opacity-75 line-clamp-2">
                         {event.description}

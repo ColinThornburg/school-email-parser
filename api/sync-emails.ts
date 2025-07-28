@@ -163,7 +163,7 @@ class OpenAIService {
           messages: [
             {
               role: 'system',
-              content: 'You are an AI assistant that extracts important dates and events from school emails. Focus on academic deadlines, events, meetings, and other time-sensitive information. Return only valid JSON.'
+              content: 'You are an AI assistant that extracts important dates and events from school emails. Focus on academic deadlines, events, sports events,meetings, and other time-sensitive information. Return only valid JSON.'
             },
             {
               role: 'user',
@@ -210,7 +210,7 @@ class OpenAIService {
   }
 
   private createPrompt(emailContent: EmailContent): string {
-    return `Extract all important dates from this school email:
+    return `Extract all important dates from this school email and provide detailed, specific information:
 
 Email Details:
 - Sent Date: ${emailContent.sentDate}
@@ -222,34 +222,54 @@ ${emailContent.body}
 
 Instructions:
 1. Focus on school-related events like:
-   - Assignment deadlines
-   - Test dates
-   - Parent-teacher conferences
-   - School events
-   - Field trips
-   - School holidays
-   - Registration deadlines
-   - Meeting dates
+   - Assignment deadlines (include subject/class name)
+   - Test dates (include subject/exam type)
+   - Parent-teacher conferences (include teacher names if mentioned)
+   - School events (include specific event details, themes, locations)
+   - Sports games (include opponent names, home/away, sport type)
+   - Field trips (include destination, departure times)
+   - School holidays and breaks
+   - Registration deadlines (include what's being registered for)
+   - Meeting dates (include purpose, participants)
+   - Performance events (include show names, roles, venues)
 
-2. Convert relative dates (like "this Friday", "next week") to absolute dates based on the email sent date: ${emailContent.sentDate}
-3. Include only future dates (after the email sent date)
-4. When parsing dates, be very careful about the day of the week mentioned in the email
-5. If a specific day of the week is mentioned (like "Monday"), make sure the date you extract actually falls on that day
-6. Provide a confidence score (0-1) for each extracted date
-7. Extract meaningful event titles and descriptions
+2. Extract SPECIFIC DETAILS - Don't be generic:
+   - For sports: Include opponent names, sport type, home/away status
+   - For assignments: Include subject, assignment type, teacher name
+   - For events: Include themes, special guests, locations, activities
+   - For meetings: Include purpose, attendees, agenda items
+   - For performances: Include show titles, roles, venues
+   - For trips: Include destinations, departure/return times
+
+3. Create meaningful, descriptive titles that include key details:
+   - GOOD: "Basketball game vs Red Birds", "Math test - Chapter 5", "Science fair at gymnasium"
+   - BAD: "School game event", "Test", "School event"
+
+4. In descriptions, include additional context and details mentioned in the email:
+   - Locations, times, what to bring, who to contact
+   - Special instructions, dress codes, prerequisites
+   - Contact information, preparation requirements
+
+5. Convert relative dates (like "this Friday", "next week") to absolute dates based on the email sent date: ${emailContent.sentDate}
+6. Include only future dates (after the email sent date)
+7. When parsing dates, be very careful about the day of the week mentioned in the email
+8. If a specific day of the week is mentioned (like "Monday"), make sure the date you extract actually falls on that day
+9. Provide a confidence score (0-1) for each extracted date based on how clear the date and event details are
 
 Return a JSON array with this exact structure:
 [
   {
-    "title": "Event or deadline title",
+    "title": "Specific, detailed event title with key information",
     "date": "YYYY-MM-DD",
     "time": "HH:MM" (optional, use 24-hour format),
-    "description": "Brief description of the event",
+    "description": "Detailed description with context, location, instructions, and other relevant information from the email",
     "confidence": 0.95
   }
 ]
 
-If no dates are found, return an empty array: []`;
+If no dates are found, return an empty array: []
+
+Remember: Extract specific details like names, locations, opponents, subjects, etc. Don't use generic terms when specific information is available in the email.`;
   }
 
   private validateAndNormalizeResponse(events: any[], sentDate: string): LLMResponse[] {
