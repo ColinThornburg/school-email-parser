@@ -1147,26 +1147,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // If force reprocess is enabled, clean up existing data first
     let cleanupCount = 0;
     if (forceReprocess) {
-      console.log('Force reprocess enabled, cleaning up existing data...');
+      console.log('Force reprocess enabled, performing complete cleanup...');
       
-      // Clean up duplicate events first
-      cleanupCount = await cleanupDuplicateEvents(supabase, userId);
+      // For full reprocess, clear ALL extracted dates for this user to avoid duplicates
+      console.log('Removing all existing extracted dates for user...');
+      const { error: deleteDatesError, count: deletedDatesCount } = await supabase
+        .from('extracted_dates')
+        .delete()
+        .eq('user_id', userId);
       
-      // Optionally, if user wants to completely start over, remove all processed emails
-      // This would cause all emails to be reprocessed
-      // const { error: deleteEmailsError } = await supabase
-      //   .from('processed_emails')
-      //   .delete()
-      //   .eq('user_id', userId);
+      if (deleteDatesError) {
+        console.error('Error deleting existing dates:', deleteDatesError);
+      } else {
+        console.log(`Removed ${deletedDatesCount || 0} existing extracted events`);
+      }
       
-      // const { error: deleteDatesError } = await supabase
-      //   .from('extracted_dates')
-      //   .delete()
-      //   .eq('user_id', userId);
+      // Also clear processed emails so they get reprocessed
+      console.log('Removing processed email records for reprocessing...');
+      const { error: deleteEmailsError, count: deletedEmailsCount } = await supabase
+        .from('processed_emails')
+        .delete()
+        .eq('user_id', userId);
       
-      console.log(`Cleanup completed. Removed ${cleanupCount} duplicate events.`);
+      if (deleteEmailsError) {
+        console.error('Error deleting processed emails:', deleteEmailsError);
+      } else {
+        console.log(`Removed ${deletedEmailsCount || 0} processed email records`);
+      }
+      
+      cleanupCount = (deletedDatesCount || 0) + (deletedEmailsCount || 0);
+      console.log(`Complete cleanup finished. Removed ${cleanupCount} total records.`);
     } else {
-      // Even on normal sync, clean up duplicates
+      // For normal sync, just clean up duplicates
       console.log('Performing routine duplicate cleanup...');
       cleanupCount = await cleanupDuplicateEvents(supabase, userId);
     }
@@ -1248,11 +1260,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // Build Gmail search query with optimized lookback window
+    // Build Gmail search query with configurable lookback window
     const senderEmails = emailSources.map(source => source.email);
-    // Use shorter lookback for full refresh to avoid timeouts, longer for normal sync
-    const lookbackDays = forceReprocess ? '3d' : '7d';
+    
+    // Get configurable lookback days with reasonable limits
+    const configuredLookbackDays = parseInt(process.env.EMAIL_LOOKBACK_DAYS || '7');
+    const maxLookbackDays = 30; // Maximum 30 days to prevent API abuse
+    const minLookbackDays = 1;  // Minimum 1 day
+    
+    // Clamp the configured value within reasonable bounds
+    const safeLookbackDays = Math.max(minLookbackDays, Math.min(maxLookbackDays, configuredLookbackDays));
+    
+    // For full reprocess, use a smaller window to avoid timeouts, but respect user config up to a point
+    const lookbackDays = forceReprocess 
+      ? `${Math.min(safeLookbackDays, 7)}d`  // Max 7 days for reprocess to avoid timeouts
+      : `${safeLookbackDays}d`;
+    
     const query = `from:(${senderEmails.join(' OR ')}) newer_than:${lookbackDays}`;
+    
+    console.log(`Using lookback window: ${lookbackDays} (configured: ${configuredLookbackDays}, safe: ${safeLookbackDays})`);
     console.log(`Gmail search query: ${query}`);
     console.log(`Searching for emails from ${senderEmails.length} configured sources: ${senderEmails.join(', ')}`);
 
@@ -1550,6 +1576,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       skippedDuplicateEvents,
       forceReprocess,
       processingMode: process.env.ENABLE_BATCH_PROCESSING === 'true' ? 'batch' : 'single',
+      lookbackConfiguration: {
+        requestedDays: parseInt(process.env.EMAIL_LOOKBACK_DAYS || '7'),
+        actualDays: safeLookbackDays,
+        usedInQuery: lookbackDays,
+        maxAllowed: 30
+      },
       costOptimization: {
         prefilterEnabled: true,
         confidenceThreshold: parseFloat(process.env.CONFIDENCE_THRESHOLD || '0.7'),

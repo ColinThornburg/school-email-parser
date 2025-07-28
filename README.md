@@ -37,6 +37,7 @@ GEMINI_API_KEY=your_gemini_key
 # Processing Configuration
 ENABLE_BATCH_PROCESSING=true          # Enable 50% cost savings through batching
 CONFIDENCE_THRESHOLD=0.7              # Threshold for fallback processing (0-1)
+EMAIL_LOOKBACK_DAYS=7                 # Days to look back for emails (1-30, default: 7)
 
 # Model Selection
 GEMINI_MODEL_PREFILTER=gemini-1.5-flash     # Pre-filtering model
@@ -47,8 +48,9 @@ OPENAI_MODEL_MAIN=gpt-4o-mini                # Main extraction model
 ### Default Values
 - `CONFIDENCE_THRESHOLD`: 0.7
 - `ENABLE_BATCH_PROCESSING`: false
-- `GEMINI_MODEL_PREFILTER`: gemini-2.0-flash
-- `GEMINI_MODEL_FALLBACK`: gemini-2.5-flash
+- `EMAIL_LOOKBACK_DAYS`: 7 (range: 1-30 days)
+- `GEMINI_MODEL_PREFILTER`: gemini-1.5-flash
+- `GEMINI_MODEL_FALLBACK`: gemini-1.5-pro
 - `OPENAI_MODEL_MAIN`: gpt-4o-mini
 
 ## Processing Modes
@@ -64,6 +66,19 @@ OPENAI_MODEL_MAIN=gpt-4o-mini                # Main extraction model
 - Better for large volumes
 - Enable with `ENABLE_BATCH_PROCESSING=true`
 
+## Reprocessing Behavior
+
+### Normal Sync
+- Only processes new emails (not already in database)
+- Removes duplicate events
+- Uses full lookback window (`EMAIL_LOOKBACK_DAYS`)
+
+### Full Reprocess (`forceReprocess: true`)
+- **Completely clears all existing extracted events** for the user
+- **Clears processed email records** to force reprocessing
+- Uses reduced lookback window (max 7 days) to avoid timeouts
+- Rebuilds entire event database from scratch
+
 ## API Response Format
 
 The `/api/sync-emails` endpoint now returns additional information:
@@ -75,6 +90,12 @@ The `/api/sync-emails` endpoint now returns additional information:
   "extracted": 25,
   "duplicatesRemoved": 3,
   "processingMode": "single",
+  "lookbackConfiguration": {
+    "requestedDays": 7,
+    "actualDays": 7,
+    "usedInQuery": "7d",
+    "maxAllowed": 30
+  },
   "costOptimization": {
     "prefilterEnabled": true,
     "confidenceThreshold": 0.7,
