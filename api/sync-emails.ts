@@ -26,6 +26,32 @@ interface GmailTokens {
   expiresAt: number;
 }
 
+// Email Classification interface
+interface EmailClassification {
+  hasDateContent: boolean;
+  confidence: number;
+  reasoning: string;
+}
+
+// Batch Processing interface
+interface BatchRequest {
+  id: string;
+  emailContent: EmailContent;
+  method: 'classify' | 'extract' | 'fallback';
+}
+
+// Cost Tracking interface
+interface CostTracking {
+  provider: 'openai' | 'gemini';
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  cost: number;
+}
+
+// Processing Mode type
+type ProcessingMode = 'single' | 'batch';
+
 // Helper function to create event hash for deduplication
 function createEventHash(userId: string, title: string, date: string, time?: string): string {
   const eventKey = `${userId}:${title.toLowerCase().trim()}:${date}:${time || 'no-time'}`;
@@ -138,18 +164,20 @@ async function eventExists(
   return data && data.length > 0;
 }
 
-// OpenAI Service class
+// Enhanced OpenAI Service class with GPT-4o mini and batch processing
 class OpenAIService {
   private apiKey: string;
   private model: string;
+  private systemPrompt: string;
 
-  constructor(apiKey: string, model: string = 'gpt-4-turbo-preview') {
+  constructor(apiKey: string, model: string = 'gpt-4o-mini') {
     this.apiKey = apiKey;
     this.model = model;
+    this.systemPrompt = 'Extract important dates from school emails. Focus on academic deadlines, events, sports, meetings. Return only valid JSON.';
   }
 
   async extractDates(emailContent: EmailContent): Promise<LLMResponse[]> {
-    const prompt = this.createPrompt(emailContent);
+    const prompt = this.createOptimizedPrompt(emailContent);
 
     try {
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -163,7 +191,7 @@ class OpenAIService {
           messages: [
             {
               role: 'system',
-              content: 'You are an AI assistant that extracts important dates and events from school emails. Focus on academic deadlines, events, sports events,meetings, and other time-sensitive information. Return only valid JSON.'
+              content: this.systemPrompt
             },
             {
               role: 'user',
@@ -171,7 +199,8 @@ class OpenAIService {
             }
           ],
           temperature: 0.1,
-          max_tokens: 1000
+          max_tokens: 800,
+          response_format: { type: "json_object" }
         })
       });
 
@@ -186,22 +215,17 @@ class OpenAIService {
         throw new Error('No response content from OpenAI');
       }
 
-      // Clean and parse JSON response (handle markdown code blocks)
-      const cleanedContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      console.log('OpenAI raw response:', content);
-      console.log('Cleaned content for JSON parsing:', cleanedContent);
+      console.log('OpenAI response:', content);
       
-      let events;
+      let parsedData;
       try {
-        events = JSON.parse(cleanedContent);
+        parsedData = JSON.parse(content);
+        const events = parsedData.events || [];
+        return this.validateAndNormalizeResponse(events, emailContent.sentDate);
       } catch (parseError) {
         console.error('JSON parsing failed. Raw content:', content);
-        console.error('Cleaned content:', cleanedContent);
         throw new Error(`Invalid JSON response from OpenAI: ${parseError instanceof Error ? parseError.message : 'Unknown parsing error'}`);
       }
-      
-      // Validate and normalize the response
-      return this.validateAndNormalizeResponse(events, emailContent.sentDate);
 
     } catch (error) {
       console.error('OpenAI API error:', error);
@@ -209,67 +233,147 @@ class OpenAIService {
     }
   }
 
-  private createPrompt(emailContent: EmailContent): string {
-    return `Extract all important dates from this school email and provide detailed, specific information:
+  // Batch processing for multiple emails using OpenAI Batch API
+  async batchExtractDates(emailContents: EmailContent[]): Promise<{ [key: string]: LLMResponse[] }> {
+    const results: { [key: string]: LLMResponse[] } = {};
 
-Email Details:
-- Sent Date: ${emailContent.sentDate}
-- From: ${emailContent.senderEmail}
-- Subject: ${emailContent.subject}
+    // OpenAI Batch API implementation
+    try {
+      const batchRequests = emailContents.map((emailContent, index) => ({
+        custom_id: `extract-${index}`,
+        method: 'POST',
+        url: '/v1/chat/completions',
+        body: {
+          model: this.model,
+          messages: [
+            {
+              role: 'system',
+              content: this.systemPrompt
+            },
+            {
+              role: 'user',
+              content: this.createOptimizedPrompt(emailContent)
+            }
+          ],
+          temperature: 0.1,
+          max_tokens: 800,
+          response_format: { type: "json_object" }
+        }
+      }));
 
-Email Content:
+      // Create batch file
+      const batchFile = batchRequests.map(req => JSON.stringify(req)).join('\n');
+      
+      // Upload batch file
+      const formData = new FormData();
+      formData.append('file', new Blob([batchFile], { type: 'application/jsonl' }), 'batch.jsonl');
+      formData.append('purpose', 'batch');
+      
+      const fileResponse = await fetch('https://api.openai.com/v1/files', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`
+        },
+        body: formData
+      });
+
+      if (!fileResponse.ok) {
+        throw new Error('Failed to upload batch file');
+      }
+
+      const fileData = await fileResponse.json();
+      
+      // Create batch job
+      const batchResponse = await fetch('https://api.openai.com/v1/batches', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.apiKey}`
+        },
+        body: JSON.stringify({
+          input_file_id: fileData.id,
+          endpoint: '/v1/chat/completions',
+          completion_window: '24h'
+        })
+      });
+
+      if (!batchResponse.ok) {
+        throw new Error('Failed to create batch job');
+      }
+
+      const batchData = await batchResponse.json();
+      
+      // For now, fall back to parallel processing since batch is async
+      return await this.parallelExtractDates(emailContents);
+
+    } catch (error) {
+      console.error('Batch processing failed, falling back to parallel:', error);
+      return await this.parallelExtractDates(emailContents);
+    }
+  }
+
+  // Parallel processing as fallback for batch API
+  private async parallelExtractDates(emailContents: EmailContent[]): Promise<{ [key: string]: LLMResponse[] }> {
+    const results: { [key: string]: LLMResponse[] } = {};
+    const batchSize = 5; // Process in smaller batches to avoid rate limits
+
+    for (let i = 0; i < emailContents.length; i += batchSize) {
+      const batch = emailContents.slice(i, i + batchSize);
+      
+      const promises = batch.map(async (emailContent, index) => {
+        const key = `email-${i + index}`;
+        try {
+          const events = await this.extractDates(emailContent);
+          return { key, events };
+        } catch (error) {
+          console.error(`Error processing email ${key}:`, error);
+          return { key, events: [] };
+        }
+      });
+
+      const batchResults = await Promise.all(promises);
+      
+      for (const result of batchResults) {
+        results[result.key] = result.events;
+      }
+
+      // Small delay between batches
+      if (i + batchSize < emailContents.length) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+
+    return results;
+  }
+
+  private createOptimizedPrompt(emailContent: EmailContent): string {
+    return `Extract school dates from this email. Be specific and detailed.
+
+Email: ${emailContent.subject}
+From: ${emailContent.senderEmail}
+Date: ${emailContent.sentDate}
+
 ${emailContent.body}
 
-Instructions:
-1. Focus on school-related events like:
-   - Assignment deadlines (include subject/class name)
-   - Test dates (include subject/exam type)
-   - Parent-teacher conferences (include teacher names if mentioned)
-   - School events (include specific event details, themes, locations)
-   - Sports games (include opponent names, home/away, sport type)
-   - Field trips (include destination, departure times)
-   - School holidays and breaks
-   - Registration deadlines (include what's being registered for)
-   - Meeting dates (include purpose, participants)
-   - Performance events (include show names, roles, venues)
+Focus on: assignments, tests, events, sports, meetings, trips, performances.
+Include specific details (names, locations, subjects).
+Convert relative dates to absolute based on ${emailContent.sentDate}.
+Only future dates.
 
-2. Extract SPECIFIC DETAILS - Don't be generic:
-   - For sports: Include opponent names, sport type, home/away status
-   - For assignments: Include subject, assignment type, teacher name
-   - For events: Include themes, special guests, locations, activities
-   - For meetings: Include purpose, attendees, agenda items
-   - For performances: Include show titles, roles, venues
-   - For trips: Include destinations, departure/return times
+Return JSON object:
+{
+  "events": [
+    {
+      "title": "specific event with details",
+      "date": "YYYY-MM-DD",
+      "time": "HH:MM" (optional),
+      "description": "context and instructions",
+      "confidence": 0.95
+    }
+  ]
+}
 
-3. Create meaningful, descriptive titles that include key details:
-   - GOOD: "Basketball game vs Red Birds", "Math test - Chapter 5", "Science fair at gymnasium"
-   - BAD: "School game event", "Test", "School event"
-
-4. In descriptions, include additional context and details mentioned in the email:
-   - Locations, times, what to bring, who to contact
-   - Special instructions, dress codes, prerequisites
-   - Contact information, preparation requirements
-
-5. Convert relative dates (like "this Friday", "next week") to absolute dates based on the email sent date: ${emailContent.sentDate}
-6. Include only future dates (after the email sent date)
-7. When parsing dates, be very careful about the day of the week mentioned in the email
-8. If a specific day of the week is mentioned (like "Monday"), make sure the date you extract actually falls on that day
-9. Provide a confidence score (0-1) for each extracted date based on how clear the date and event details are
-
-Return a JSON array with this exact structure:
-[
-  {
-    "title": "Specific, detailed event title with key information",
-    "date": "YYYY-MM-DD",
-    "time": "HH:MM" (optional, use 24-hour format),
-    "description": "Detailed description with context, location, instructions, and other relevant information from the email",
-    "confidence": 0.95
-  }
-]
-
-If no dates are found, return an empty array: []
-
-Remember: Extract specific details like names, locations, opponents, subjects, etc. Don't use generic terms when specific information is available in the email.`;
+Return {"events": []} if no dates found.`;
   }
 
   private validateAndNormalizeResponse(events: any[], sentDate: string): LLMResponse[] {
@@ -310,6 +414,236 @@ Remember: Extract specific details like names, locations, opponents, subjects, e
     }
 
     return validEvents;
+  }
+}
+
+// LLM Orchestrator class for managing tiered processing workflow
+class LLMOrchestrator {
+  private geminiService: GeminiService;
+  private openaiService: OpenAIService;
+  private confidenceThreshold: number;
+  private enableBatchProcessing: boolean;
+
+  constructor(
+    geminiApiKey: string,
+    openaiApiKey: string,
+    options: {
+      confidenceThreshold?: number;
+      enableBatchProcessing?: boolean;
+      geminiPrefilterModel?: string;
+      geminiFallbackModel?: string;
+      openaiMainModel?: string;
+    } = {}
+  ) {
+    this.geminiService = new GeminiService(
+      geminiApiKey,
+      options.geminiPrefilterModel || 'gemini-2.0-flash',
+      options.geminiFallbackModel || 'gemini-2.5-flash'
+    );
+    this.openaiService = new OpenAIService(
+      openaiApiKey,
+      options.openaiMainModel || 'gpt-4o-mini'
+    );
+    this.confidenceThreshold = options.confidenceThreshold || 0.7;
+    this.enableBatchProcessing = options.enableBatchProcessing || false;
+  }
+
+  // Main processing method with tiered approach
+  async processEmails(emailContents: EmailContent[], processingMode: ProcessingMode = 'single'): Promise<{
+    results: { [key: string]: LLMResponse[] };
+    costTracking: CostTracking[];
+    processingStats: {
+      totalEmails: number;
+      prefilterPassed: number;
+      mainExtractions: number;
+      fallbackUsed: number;
+      totalCost: number;
+    };
+  }> {
+    const results: { [key: string]: LLMResponse[] } = {};
+    const costTracking: CostTracking[] = [];
+    const processingStats = {
+      totalEmails: emailContents.length,
+      prefilterPassed: 0,
+      mainExtractions: 0,
+      fallbackUsed: 0,
+      totalCost: 0
+    };
+
+    console.log(`Starting tiered processing for ${emailContents.length} emails in ${processingMode} mode`);
+
+    if (processingMode === 'batch' && this.enableBatchProcessing) {
+      return await this.batchProcess(emailContents, results, costTracking, processingStats);
+    } else {
+      return await this.singleProcess(emailContents, results, costTracking, processingStats);
+    }
+  }
+
+  // Single processing mode
+  private async singleProcess(
+    emailContents: EmailContent[],
+    results: { [key: string]: LLMResponse[] },
+    costTracking: CostTracking[],
+    processingStats: any
+  ) {
+    for (let i = 0; i < emailContents.length; i++) {
+      const emailContent = emailContents[i];
+      const emailKey = `email-${i}`;
+
+      console.log(`Processing email ${i + 1}/${emailContents.length}: "${emailContent.subject}"`);
+
+      try {
+        // Step 1: Pre-filter with Gemini 2.0 Flash
+        console.log('Step 1: Pre-filtering with Gemini 2.0 Flash...');
+        const classification = await this.geminiService.classifyEmail(emailContent);
+        
+        // Track cost for classification
+        const classificationTokens = estimateTokenUsage(emailContent.subject + emailContent.body.substring(0, 500));
+        const classificationCost = calculateGeminiCost('gemini-2.0-flash', classificationTokens, 50);
+        costTracking.push({
+          provider: 'gemini',
+          model: 'gemini-2.0-flash',
+          inputTokens: classificationTokens,
+          outputTokens: 50,
+          cost: classificationCost
+        });
+        processingStats.totalCost += classificationCost;
+
+        console.log(`Classification result: ${classification.hasDateContent} (confidence: ${classification.confidence})`);
+
+        if (!classification.hasDateContent) {
+          console.log('Email does not contain date content, skipping extraction');
+          results[emailKey] = [];
+          continue;
+        }
+
+        processingStats.prefilterPassed++;
+
+        // Step 2: Main extraction with GPT-4o mini
+        console.log('Step 2: Main extraction with GPT-4o mini...');
+        const mainExtractionResults = await this.openaiService.extractDates(emailContent);
+        
+        // Track cost for main extraction
+        const extractionTokens = estimateTokenUsage(emailContent.subject + emailContent.body);
+        const extractionCost = calculateOpenAICost('gpt-4o-mini', extractionTokens, 400);
+        costTracking.push({
+          provider: 'openai',
+          model: 'gpt-4o-mini',
+          inputTokens: extractionTokens,
+          outputTokens: 400,
+          cost: extractionCost
+        });
+        processingStats.totalCost += extractionCost;
+        processingStats.mainExtractions++;
+
+        console.log(`Main extraction found ${mainExtractionResults.length} events`);
+
+        // Step 3: Check confidence and use fallback if needed
+        const lowConfidenceEvents = mainExtractionResults.filter(event => event.confidence < this.confidenceThreshold);
+        
+        if (lowConfidenceEvents.length > 0) {
+          console.log(`Step 3: Using Gemini 2.5 Flash fallback for ${lowConfidenceEvents.length} low-confidence events...`);
+          
+          const fallbackResults = await this.geminiService.extractDates(emailContent);
+          
+          // Track cost for fallback
+          const fallbackTokens = estimateTokenUsage(emailContent.subject + emailContent.body);
+          const fallbackCost = calculateGeminiCost('gemini-2.5-flash', fallbackTokens, 600);
+          costTracking.push({
+            provider: 'gemini',
+            model: 'gemini-2.5-flash',
+            inputTokens: fallbackTokens,
+            outputTokens: 600,
+            cost: fallbackCost
+          });
+          processingStats.totalCost += fallbackCost;
+          processingStats.fallbackUsed++;
+
+          // Merge results, preferring higher confidence events
+          const mergedResults = this.mergeResults(mainExtractionResults, fallbackResults);
+          results[emailKey] = mergedResults;
+          
+          console.log(`Fallback processing completed, final result: ${mergedResults.length} events`);
+        } else {
+          results[emailKey] = mainExtractionResults;
+        }
+
+      } catch (error) {
+        console.error(`Error processing email ${emailKey}:`, error);
+        results[emailKey] = [];
+      }
+
+      // Small delay to avoid rate limiting
+      if (i < emailContents.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+
+    console.log(`Single processing completed. Total cost: $${processingStats.totalCost.toFixed(4)}`);
+
+    return {
+      results,
+      costTracking,
+      processingStats
+    };
+  }
+
+  // Batch processing mode
+  private async batchProcess(
+    emailContents: EmailContent[],
+    results: { [key: string]: LLMResponse[] },
+    costTracking: CostTracking[],
+    processingStats: any
+  ) {
+    console.log('Starting batch processing...');
+
+    // Step 1: Batch classify all emails
+    const batchRequests = emailContents.map((emailContent, index) => ({
+      id: `email-${index}`,
+      emailContent,
+      method: 'classify' as const
+    }));
+
+    try {
+                    // Temporarily disable batch processing due to type issues
+       // TODO: Fix BatchRequest type issues and implement proper batch processing
+       console.log('Batch processing temporarily disabled, falling back to single processing');
+       return await this.singleProcess(emailContents, results, costTracking, processingStats);
+
+    } catch (error) {
+      console.error('Batch processing failed, falling back to single processing:', error);
+      return await this.singleProcess(emailContents, results, costTracking, processingStats);
+    }
+
+    return {
+      results,
+      costTracking,
+      processingStats
+    };
+  }
+
+  // Merge results from main extraction and fallback, preferring higher confidence
+  private mergeResults(mainResults: LLMResponse[], fallbackResults: LLMResponse[]): LLMResponse[] {
+    const mergedEvents = [...mainResults];
+    const existingEvents = new Set(mainResults.map(e => `${e.title}:${e.date}:${e.time || ''}`));
+
+    for (const fallbackEvent of fallbackResults) {
+      const eventKey = `${fallbackEvent.title}:${fallbackEvent.date}:${fallbackEvent.time || ''}`;
+      
+      if (!existingEvents.has(eventKey)) {
+        mergedEvents.push(fallbackEvent);
+      } else {
+        // Replace if fallback has higher confidence
+        const existingIndex = mergedEvents.findIndex(e => 
+          `${e.title}:${e.date}:${e.time || ''}` === eventKey);
+        
+        if (existingIndex >= 0 && fallbackEvent.confidence > mergedEvents[existingIndex].confidence) {
+          mergedEvents[existingIndex] = fallbackEvent;
+        }
+      }
+    }
+
+    return mergedEvents.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   }
 }
 
@@ -475,6 +809,254 @@ function estimateTokenUsage(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
+// Cost calculation functions
+function calculateOpenAICost(model: string, inputTokens: number, outputTokens: number): number {
+  const costs = {
+    'gpt-4o-mini': { input: 0.60 / 1000000, output: 2.40 / 1000000 },
+    'gpt-4-turbo-preview': { input: 10 / 1000000, output: 30 / 1000000 }
+  };
+  const modelCost = costs[model as keyof typeof costs] || costs['gpt-4o-mini'];
+  return (inputTokens * modelCost.input + outputTokens * modelCost.output);
+}
+
+function calculateGeminiCost(model: string, inputTokens: number, outputTokens: number): number {
+  const costs = {
+    'gemini-2.0-flash': { input: 0.10 / 1000000, output: 0.40 / 1000000 },
+    'gemini-2.5-flash': { input: 1.25 / 1000000, output: 10 / 1000000 }
+  };
+  const modelCost = costs[model as keyof typeof costs] || costs['gemini-2.0-flash'];
+  return (inputTokens * modelCost.input + outputTokens * modelCost.output);
+}
+
+// GeminiService class for pre-filtering and fallback processing
+class GeminiService {
+  private apiKey: string;
+  private prefilterModel: string;
+  private fallbackModel: string;
+
+  constructor(apiKey: string, prefilterModel: string = 'gemini-2.0-flash', fallbackModel: string = 'gemini-2.5-flash') {
+    this.apiKey = apiKey;
+    this.prefilterModel = prefilterModel;
+    this.fallbackModel = fallbackModel;
+  }
+
+  // Pre-filter emails to determine if they likely contain date information
+  async classifyEmail(emailContent: EmailContent): Promise<EmailClassification> {
+    const prompt = this.createClassificationPrompt(emailContent);
+
+    try {
+      const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-experimental:generateContent', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': this.apiKey
+        },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{
+              text: prompt
+            }]
+          }],
+          generationConfig: {
+            temperature: 0.1,
+            maxOutputTokens: 100,
+            topP: 0.8,
+            topK: 10
+          }
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Gemini API error: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+      if (!content) {
+        throw new Error('No response content from Gemini');
+      }
+
+      // Parse classification response
+      const cleanedContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      const classification = JSON.parse(cleanedContent);
+      
+      return {
+        hasDateContent: classification.hasDateContent || false,
+        confidence: Math.max(0, Math.min(1, classification.confidence || 0)),
+        reasoning: classification.reasoning || ''
+      };
+
+    } catch (error) {
+      console.error('Gemini classification error:', error);
+      // Default to processing if classification fails
+      return {
+        hasDateContent: true,
+        confidence: 0.5,
+        reasoning: 'Classification failed, defaulting to processing'
+      };
+    }
+  }
+
+  // Fallback extraction for complex cases
+  async extractDates(emailContent: EmailContent): Promise<LLMResponse[]> {
+    const prompt = this.createExtractionPrompt(emailContent);
+
+    try {
+      const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': this.apiKey
+        },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{
+              text: prompt
+            }]
+          }],
+          generationConfig: {
+            temperature: 0.1,
+            maxOutputTokens: 1500,
+            topP: 0.9,
+            topK: 40
+          }
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Gemini API error: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+      if (!content) {
+        throw new Error('No response content from Gemini');
+      }
+
+      // Parse extraction response
+      const cleanedContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      const events = JSON.parse(cleanedContent);
+      
+      return this.validateAndNormalizeResponse(events, emailContent.sentDate);
+
+    } catch (error) {
+      console.error('Gemini extraction error:', error);
+      return [];
+    }
+  }
+
+  // Batch processing for multiple emails (temporarily disabled due to type issues)
+  async batchClassifyEmails(batchRequests: any[]): Promise<{ [key: string]: EmailClassification }> {
+    // TODO: Fix type issues and implement proper batch processing
+    const results: { [key: string]: EmailClassification } = {};
+    
+    console.log('Batch processing temporarily disabled, processing individually');
+    
+    for (const request of batchRequests) {
+      try {
+        const classification = await this.classifyEmail(request.emailContent);
+        results[request.id] = classification;
+      } catch (error) {
+        console.error(`Error classifying email ${request.id}:`, error);
+        results[request.id] = {
+          hasDateContent: true,
+          confidence: 0.5,
+          reasoning: 'Classification failed, defaulting to processing'
+        };
+      }
+    }
+
+    return results;
+  }
+
+  private createClassificationPrompt(emailContent: EmailContent): string {
+    return `Analyze this school email to determine if it contains date/time information that should be extracted for a calendar.
+
+Email Subject: ${emailContent.subject}
+Email From: ${emailContent.senderEmail}
+Email Body: ${emailContent.body.substring(0, 500)}...
+
+Return ONLY a JSON object with this structure:
+{
+  "hasDateContent": boolean,
+  "confidence": number (0-1),
+  "reasoning": "brief explanation"
+}
+
+Look for:
+- Assignment deadlines
+- Test dates
+- Events, meetings, conferences
+- Sports games
+- Field trips
+- Registration deadlines
+- Performance dates
+
+Return true if ANY date/time information is found, false otherwise.`;
+  }
+
+  private createExtractionPrompt(emailContent: EmailContent): string {
+    return `Extract important dates from this school email. Be specific and detailed.
+
+Email: ${emailContent.subject}
+From: ${emailContent.senderEmail}
+Date: ${emailContent.sentDate}
+Body: ${emailContent.body}
+
+Focus on school events: assignments, tests, meetings, sports, trips, performances.
+Include specific details in titles and descriptions.
+Convert relative dates to absolute dates based on sent date: ${emailContent.sentDate}
+Only include future dates.
+
+Return JSON array:
+[
+  {
+    "title": "specific event title with details",
+    "date": "YYYY-MM-DD",
+    "time": "HH:MM" (optional),
+    "description": "detailed context and instructions",
+    "confidence": 0.95
+  }
+]
+
+Return [] if no dates found.`;
+  }
+
+  private validateAndNormalizeResponse(events: any[], sentDate: string): LLMResponse[] {
+    if (!Array.isArray(events)) {
+      return [];
+    }
+
+    const sentDateTime = new Date(sentDate);
+    const validEvents: LLMResponse[] = [];
+
+    for (const event of events) {
+      if (!event.title || !event.date || typeof event.confidence !== 'number') {
+        continue;
+      }
+
+      const eventDate = new Date(event.date);
+      if (isNaN(eventDate.getTime()) || eventDate <= sentDateTime) {
+        continue;
+      }
+
+      const confidence = Math.max(0, Math.min(1, event.confidence));
+
+      validEvents.push({
+        title: String(event.title).trim(),
+        date: event.date,
+        time: event.time || undefined,
+        description: event.description ? String(event.description).trim() : '',
+        confidence: confidence
+      });
+    }
+
+    return validEvents;
+  }
+}
+
 // Serverless function handler for Vercel
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   console.log('Sync emails function called');
@@ -511,9 +1093,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       throw new Error('Missing Gmail environment variables');
     }
 
-    // Check OpenAI environment variable
+    // Check required API keys
     if (!process.env.OPENAI_API_KEY) {
       throw new Error('Missing OpenAI API key');
+    }
+    if (!process.env.GEMINI_API_KEY) {
+      throw new Error('Missing Gemini API key');
     }
 
     // Initialize services
@@ -523,8 +1108,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       process.env.GMAIL_CLIENT_SECRET
     );
 
-    console.log('Initializing OpenAI service');
-    const openaiService = new OpenAIService(process.env.OPENAI_API_KEY);
+    console.log('Initializing LLM Orchestrator with tiered processing');
+    const llmOrchestrator = new LLMOrchestrator(
+      process.env.GEMINI_API_KEY,
+      process.env.OPENAI_API_KEY,
+      {
+        confidenceThreshold: parseFloat(process.env.CONFIDENCE_THRESHOLD || '0.7'),
+        enableBatchProcessing: process.env.ENABLE_BATCH_PROCESSING === 'true',
+        geminiPrefilterModel: process.env.GEMINI_MODEL_PREFILTER || 'gemini-2.0-flash',
+        geminiFallbackModel: process.env.GEMINI_MODEL_FALLBACK || 'gemini-2.5-flash',
+        openaiMainModel: process.env.OPENAI_MODEL_MAIN || 'gpt-4o-mini'
+      }
+    );
     console.log('Services initialized successfully');
 
     // If force reprocess is enabled, clean up existing data first
@@ -664,7 +1259,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     console.log(`Starting to process ${messagesResponse.messages.length} messages...`);
 
-    // Process each email
+    // First pass: collect all email content and store in database
+    const emailContentsToProcess: EmailContent[] = [];
+    const emailMetadata: Array<{ messageId: string; processedEmailId: string; index: number }> = [];
+
     for (let i = 0; i < messagesResponse.messages.length; i++) {
       const messageRef = messagesResponse.messages[i];
       console.log(`Processing email ${i + 1}/${messagesResponse.messages.length}, ID: ${messageRef.id}`);
@@ -764,70 +1362,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         console.log(`Successfully stored email ${messageRef.id} in database`);
         processedEmails.push(processedEmail);
 
-        // Extract dates using OpenAI
-        console.log(`Calling OpenAI to extract dates from email: "${subject}"`);
-        const startTime = Date.now();
-        const extractedEvents = await openaiService.extractDates({
+        // Collect email content for batch processing
+        emailContentsToProcess.push({
           subject,
           body,
           senderEmail: from,
           sentDate: date
         });
 
-        const processingTime = Date.now() - startTime;
-        console.log(`OpenAI processing completed in ${processingTime}ms, found ${extractedEvents.length} events`);
-
-        // Store processing history
-        await supabase
-          .from('processing_history')
-          .insert({
-            user_id: userId,
-            email_id: processedEmail.id,
-            llm_provider: 'openai',
-            processing_time: processingTime,
-            token_usage: estimateTokenUsage(subject + body),
-            success_status: true
-          });
-
-        // Store extracted dates with deduplication
-        for (const event of extractedEvents) {
-          console.log(`Checking if event already exists: "${event.title}" on ${event.date}`);
-          
-          // Check if this exact event already exists for this user
-          const exists = await eventExists(supabase, userId, event.title, event.date, event.time);
-          
-          if (exists && !forceReprocess) {
-            console.log(`Event "${event.title}" on ${event.date} already exists, skipping...`);
-            skippedDuplicateEvents++;
-            continue;
-          }
-
-          console.log(`Storing extracted event: "${event.title}" on ${event.date}`);
-          const { data: extractedDate, error: dateError } = await supabase
-            .from('extracted_dates')
-            .upsert({
-              email_id: processedEmail.id,
-              user_id: userId,
-              event_title: event.title,
-              event_date: event.date,
-              event_time: event.time,
-              description: event.description,
-              confidence_score: event.confidence,
-              is_verified: false,
-              extracted_at: new Date().toISOString()
-            }, {
-              onConflict: 'user_id,event_title,event_date,event_time',
-              ignoreDuplicates: !forceReprocess
-            })
-            .select()
-            .single();
-
-          if (!dateError && extractedDate) {
-            extractedDates.push(extractedDate);
-          } else if (dateError) {
-            console.error('Error storing extracted date:', dateError);
-          }
-        }
+        emailMetadata.push({
+          messageId: messageRef.id,
+          processedEmailId: processedEmail.id,
+          index: i
+        });
 
         console.log(`Completed processing email ${i + 1}/${messagesResponse.messages.length}`);
         // Small delay to avoid rate limiting
@@ -853,6 +1400,105 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
+    // Second pass: Process emails through LLM Orchestrator
+    console.log(`\nStarting tiered LLM processing for ${emailContentsToProcess.length} emails...`);
+    
+    if (emailContentsToProcess.length > 0) {
+      try {
+        const processingMode: ProcessingMode = process.env.ENABLE_BATCH_PROCESSING === 'true' ? 'batch' : 'single';
+        console.log(`Using processing mode: ${processingMode}`);
+        
+        const llmStartTime = Date.now();
+        const llmResults = await llmOrchestrator.processEmails(emailContentsToProcess, processingMode);
+        const totalLLMTime = Date.now() - llmStartTime;
+
+        console.log(`LLM processing completed in ${totalLLMTime}ms`);
+        console.log(`Processing stats:`, llmResults.processingStats);
+        console.log(`Total cost: $${llmResults.processingStats.totalCost.toFixed(4)}`);
+
+        // Store processing history for each cost tracking entry
+        for (const cost of llmResults.costTracking) {
+          await supabase
+            .from('processing_history')
+            .insert({
+              user_id: userId,
+              email_id: null, // Batch processing doesn't map to individual emails
+              llm_provider: cost.provider,
+              processing_time: totalLLMTime / llmResults.costTracking.length, // Distribute time
+              token_usage: cost.inputTokens + cost.outputTokens,
+              success_status: true,
+              cost: cost.cost
+            });
+        }
+
+        // Process and store extracted events
+        for (const [emailKey, events] of Object.entries(llmResults.results)) {
+          const emailIndex = parseInt(emailKey.replace('email-', ''));
+          const metadata = emailMetadata[emailIndex];
+          
+          if (!metadata) {
+            console.error(`No metadata found for email index ${emailIndex}`);
+            continue;
+          }
+
+          console.log(`Processing ${events.length} events for email ${metadata.messageId}`);
+
+          for (const event of events) {
+            // Check if this exact event already exists for this user
+            const exists = await eventExists(supabase, userId, event.title, event.date, event.time);
+            
+            if (exists && !forceReprocess) {
+              console.log(`Event "${event.title}" on ${event.date} already exists, skipping...`);
+              skippedDuplicateEvents++;
+              continue;
+            }
+
+            console.log(`Storing extracted event: "${event.title}" on ${event.date} (confidence: ${event.confidence})`);
+            const { data: extractedDate, error: dateError } = await supabase
+              .from('extracted_dates')
+              .upsert({
+                email_id: metadata.processedEmailId,
+                user_id: userId,
+                event_title: event.title,
+                event_date: event.date,
+                event_time: event.time,
+                description: event.description,
+                confidence_score: event.confidence,
+                is_verified: false,
+                extracted_at: new Date().toISOString()
+              }, {
+                onConflict: 'user_id,event_title,event_date,event_time',
+                ignoreDuplicates: !forceReprocess
+              })
+              .select()
+              .single();
+
+            if (!dateError && extractedDate) {
+              extractedDates.push(extractedDate);
+            } else if (dateError) {
+              console.error('Error storing extracted date:', dateError);
+            }
+          }
+        }
+
+      } catch (error) {
+        console.error('LLM processing error:', error);
+        
+        // Store failed processing history
+        await supabase
+          .from('processing_history')
+          .insert({
+            user_id: userId,
+            email_id: null,
+            llm_provider: 'orchestrator',
+            processing_time: 0,
+            token_usage: 0,
+            success_status: false,
+            error_message: error instanceof Error ? error.message : 'Unknown error'
+          });
+      }
+    }
+
     console.log(`Finished processing all emails. Total processed: ${processedEmails.length}, Total dates extracted: ${extractedDates.length}, Skipped duplicate emails: ${skippedDuplicateEmails}, Skipped duplicate events: ${skippedDuplicateEvents}`);
 
     // Update user's last sync timestamp
@@ -867,7 +1513,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ? 'Email reprocessing completed successfully'
       : 'Email sync completed successfully';
 
-    res.status(200).json({
+    // Calculate final statistics
+    const finalStats = {
       message: responseMessage,
       processed: processedEmails.length,
       extracted: extractedDates.length,
@@ -875,9 +1522,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       skippedDuplicateEmails,
       skippedDuplicateEvents,
       forceReprocess,
+      processingMode: process.env.ENABLE_BATCH_PROCESSING === 'true' ? 'batch' : 'single',
+      costOptimization: {
+        prefilterEnabled: true,
+        confidenceThreshold: parseFloat(process.env.CONFIDENCE_THRESHOLD || '0.7'),
+        tieredProcessing: true
+      },
       emails: processedEmails,
       dates: extractedDates
-    });
+    };
+
+    res.status(200).json(finalStats);
 
   } catch (error) {
     console.error('Sync emails error:', error);

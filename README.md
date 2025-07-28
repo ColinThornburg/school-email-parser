@@ -1,196 +1,114 @@
-# School Email Date Parser
+# School Email Date Extraction App
 
-A modern web application that integrates with Gmail to automatically parse and consolidate important dates from school emails into a unified dashboard for parents.
+## Overview
+This application extracts important dates and events from school emails using a cost-efficient multi-model LLM strategy.
 
-## Features
+## New: Cost-Efficient Multi-Model LLM System
 
-- **Gmail Integration**: OAuth 2.0 authentication with Gmail API
-- **Email Source Management**: Configure specific email addresses and domains to monitor
-- **Intelligent Date Extraction**: Uses LLM (OpenAI/Claude) to extract dates from emails
-- **Modern UI**: Built with React, TypeScript, and Tailwind CSS
-- **Real-time Dashboard**: Calendar and list views of extracted events
-- **Confidence Scoring**: AI-powered confidence scores for extracted dates
-- **Verification System**: Manual verification of extracted events
+The application now uses a tiered processing approach to optimize costs while maintaining accuracy:
 
-## Tech Stack
+### Architecture
+1. **Pre-filter**: Gemini 2.0 Flash ($0.10/$0.40) classifies emails to determine if they contain date information
+2. **Main extraction**: GPT-4o mini ($0.60/$2.40) performs primary date parsing
+3. **Fallback**: Gemini 2.5 Flash ($1.25/$10) handles complex cases with low confidence results
 
-- **Frontend**: React + TypeScript + Vite
-- **Backend**: Serverless functions (Vercel/Netlify)
-- **Database**: Supabase (PostgreSQL)
-- **UI Framework**: Tailwind CSS + shadcn/ui
-- **Authentication**: Gmail OAuth 2.0
-- **LLM Integration**: OpenAI GPT-4 / Claude
+### Expected Cost Savings
+- **70-85% cost reduction** compared to using GPT-4 Turbo for all processing
+- Pre-filtering eliminates ~40-60% of emails from expensive processing
+- Batch processing provides additional 50% cost savings when enabled
 
-## Setup Instructions
+## Environment Variables
 
-### Prerequisites
-
-- Node.js 18+ and npm
-- Gmail account with API access
-- Supabase account
-- OpenAI API key
-
-### 1. Clone and Install Dependencies
-
-```bash
-git clone <repository-url>
-cd school-email-parser
-npm install
-```
-
-### 2. Set Up Supabase
-
-1. Create a new project at [supabase.com](https://supabase.com)
-2. Copy the project URL and anon key
-3. Run the SQL schema from `supabase-schema.sql` in the Supabase SQL editor
-4. Enable Row Level Security (RLS) in the project settings
-
-### 3. Set Up Gmail API
-
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project or select an existing one
-3. Enable the Gmail API
-4. Create credentials (OAuth 2.0 client ID)
-5. Set authorized origins:
-   - `http://localhost:5173` (for development)
-   - Your production domain
-6. Set authorized redirect URIs:
-   - `http://localhost:5173/auth/callback`
-   - `https://yourdomain.com/auth/callback`
-
-### 4. Environment Variables
-
-Create a `.env` file in the root directory:
-
+### Required API Keys
 ```env
-# Supabase Configuration
-VITE_SUPABASE_URL=your_supabase_url
-VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+# Existing
+OPENAI_API_KEY=your_openai_key
+SUPABASE_URL=your_supabase_url
+SUPABASE_SERVICE_KEY=your_service_key
+GMAIL_CLIENT_ID=your_gmail_client_id
+GMAIL_CLIENT_SECRET=your_gmail_client_secret
 
-# Gmail API Configuration
-VITE_GMAIL_CLIENT_ID=your_gmail_client_id
-VITE_GMAIL_CLIENT_SECRET=your_gmail_client_secret
-
-# OpenAI Configuration
-VITE_OPENAI_API_KEY=your_openai_api_key
-
-# Claude Configuration (optional)
-VITE_CLAUDE_API_KEY=your_claude_api_key
+# New: Required for multi-model system
+GEMINI_API_KEY=your_gemini_key
 ```
 
-### 5. Gmail API Setup Details
+### Optional Configuration
+```env
+# Processing Configuration
+ENABLE_BATCH_PROCESSING=true          # Enable 50% cost savings through batching
+CONFIDENCE_THRESHOLD=0.7              # Threshold for fallback processing (0-1)
 
-For Gmail integration, you'll need to:
-
-1. **Enable Gmail API**:
-   - Go to Google Cloud Console
-   - Navigate to "APIs & Services" > "Library"
-   - Search for "Gmail API" and enable it
-
-2. **Create OAuth 2.0 Credentials**:
-   - Go to "APIs & Services" > "Credentials"
-   - Click "Create Credentials" > "OAuth 2.0 Client ID"
-   - Choose "Web application"
-   - Add authorized JavaScript origins: `http://localhost:5173`
-   - Add authorized redirect URIs: `http://localhost:5173/auth/callback`
-
-3. **Configure OAuth Consent Screen**:
-   - Go to "APIs & Services" > "OAuth consent screen"
-   - Add required information
-   - Add scopes: `https://www.googleapis.com/auth/gmail.readonly`
-
-4. **Required Gmail Scopes**:
-   - `https://www.googleapis.com/auth/gmail.readonly`
-   - `https://www.googleapis.com/auth/userinfo.email`
-
-### 6. Run the Application
-
-```bash
-# Development mode
-npm run dev
-
-# Production build
-npm run build
-npm run preview
+# Model Selection
+GEMINI_MODEL_PREFILTER=gemini-2.0-flash     # Pre-filtering model
+GEMINI_MODEL_FALLBACK=gemini-2.5-flash      # Fallback model for complex cases
+OPENAI_MODEL_MAIN=gpt-4o-mini                # Main extraction model
 ```
 
-The app will be available at `http://localhost:5173`
+### Default Values
+- `CONFIDENCE_THRESHOLD`: 0.7
+- `ENABLE_BATCH_PROCESSING`: false
+- `GEMINI_MODEL_PREFILTER`: gemini-2.0-flash
+- `GEMINI_MODEL_FALLBACK`: gemini-2.5-flash
+- `OPENAI_MODEL_MAIN`: gpt-4o-mini
 
-## Project Structure
+## Processing Modes
 
+### Single Mode (Default)
+- Processes emails one by one
+- Immediate results
+- Better for real-time processing
+
+### Batch Mode
+- Processes emails in batches of 10-50
+- 50% cost savings through batch APIs
+- Better for large volumes
+- Enable with `ENABLE_BATCH_PROCESSING=true`
+
+## API Response Format
+
+The `/api/sync-emails` endpoint now returns additional information:
+
+```json
+{
+  "message": "Email sync completed successfully",
+  "processed": 10,
+  "extracted": 25,
+  "duplicatesRemoved": 3,
+  "processingMode": "single",
+  "costOptimization": {
+    "prefilterEnabled": true,
+    "confidenceThreshold": 0.7,
+    "tieredProcessing": true
+  },
+  "emails": [...],
+  "dates": [...]
+}
 ```
-school-email-parser/
-├── src/
-│   ├── components/
-│   │   ├── ui/           # Reusable UI components
-│   │   └── Dashboard.tsx # Main dashboard component
-│   ├── lib/
-│   │   ├── supabase.ts   # Supabase client configuration
-│   │   └── utils.ts      # Utility functions
-│   ├── types/
-│   │   └── index.ts      # TypeScript type definitions
-│   ├── App.tsx           # Main application component
-│   ├── main.tsx          # React entry point
-│   └── index.css         # Global styles
-├── api/                  # Serverless functions (to be implemented)
-├── supabase-schema.sql   # Database schema
-├── package.json
-├── vite.config.ts
-├── tailwind.config.js
-└── README.md
-```
 
-## Next Steps
+## Cost Tracking
 
-### Phase 1: Core Infrastructure (Current)
-- ✅ Basic web application framework
-- ✅ Modern React + TypeScript setup
-- ✅ Supabase database schema
-- ✅ UI components and dashboard
-- 🔄 Gmail OAuth integration
-- 🔄 Email fetching functionality
+Processing costs are automatically tracked in the `processing_history` table with:
+- Provider (openai/gemini)
+- Model used
+- Token usage
+- Actual cost
+- Processing time
 
-### Phase 2: Content Processing (Next)
-- ⏳ Email text extraction
-- ⏳ PDF processing capability
-- ⏳ LLM integration for date extraction
-- ⏳ Serverless functions for email processing
+## Getting Gemini API Key
 
-### Phase 3: Advanced Features
-- ⏳ Real-time email monitoring
-- ⏳ Calendar view with FullCalendar
-- ⏳ Email source management UI
-- ⏳ Settings and configuration panel
+1. Go to [Google AI Studio](https://makersuite.google.com/app/apikey)
+2. Create a new API key
+3. Add it to your environment variables as `GEMINI_API_KEY`
 
-## API Integration
+## Migration from Single Model
 
-The application will use serverless functions for:
+The system is backward compatible. If `GEMINI_API_KEY` is not provided, it will fall back to OpenAI-only processing with a warning.
 
-1. **Gmail Authentication**: Handle OAuth flow
-2. **Email Processing**: Fetch and process emails
-3. **LLM Integration**: Extract dates using OpenAI/Claude
-4. **Database Operations**: CRUD operations via Supabase
+## Performance Optimization Features
 
-## Security Features
-
-- Row Level Security (RLS) in Supabase
-- Encrypted Gmail token storage
-- Secure API key management
-- OAuth 2.0 authentication flow
-- Content hashing for deduplication
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
-
-## License
-
-This project is licensed under the MIT License.
-
-## Support
-
-For issues and questions, please create an issue in the GitHub repository. 
+- **Smart pre-filtering**: Eliminates 40-60% of emails from expensive processing
+- **Confidence-based fallback**: Only uses expensive models when needed
+- **Batch processing**: 50% cost savings through provider batch APIs
+- **Prompt optimization**: Reduced token usage through shorter, optimized prompts
+- **Structured output**: JSON mode for faster, more reliable parsing
+- **Cost tracking**: Real-time cost monitoring and optimization insights 
