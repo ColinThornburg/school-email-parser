@@ -437,8 +437,8 @@ class LLMOrchestrator {
   ) {
     this.geminiService = new GeminiService(
       geminiApiKey,
-      options.geminiPrefilterModel || 'gemini-2.0-flash',
-      options.geminiFallbackModel || 'gemini-2.5-flash'
+      options.geminiPrefilterModel || 'gemini-1.5-flash',
+      options.geminiFallbackModel || 'gemini-1.5-pro'
     );
     this.openaiService = new OpenAIService(
       openaiApiKey,
@@ -499,10 +499,10 @@ class LLMOrchestrator {
         
         // Track cost for classification
         const classificationTokens = estimateTokenUsage(emailContent.subject + emailContent.body.substring(0, 500));
-        const classificationCost = calculateGeminiCost('gemini-2.0-flash', classificationTokens, 50);
+        const classificationCost = calculateGeminiCost('gemini-1.5-flash', classificationTokens, 50);
         costTracking.push({
           provider: 'gemini',
-          model: 'gemini-2.0-flash',
+          model: 'gemini-1.5-flash',
           inputTokens: classificationTokens,
           outputTokens: 50,
           cost: classificationCost
@@ -548,10 +548,10 @@ class LLMOrchestrator {
           
           // Track cost for fallback
           const fallbackTokens = estimateTokenUsage(emailContent.subject + emailContent.body);
-          const fallbackCost = calculateGeminiCost('gemini-2.5-flash', fallbackTokens, 600);
+          const fallbackCost = calculateGeminiCost('gemini-1.5-pro', fallbackTokens, 600);
           costTracking.push({
             provider: 'gemini',
-            model: 'gemini-2.5-flash',
+            model: 'gemini-1.5-pro',
             inputTokens: fallbackTokens,
             outputTokens: 600,
             cost: fallbackCost
@@ -821,10 +821,10 @@ function calculateOpenAICost(model: string, inputTokens: number, outputTokens: n
 
 function calculateGeminiCost(model: string, inputTokens: number, outputTokens: number): number {
   const costs = {
-    'gemini-2.0-flash': { input: 0.10 / 1000000, output: 0.40 / 1000000 },
-    'gemini-2.5-flash': { input: 1.25 / 1000000, output: 10 / 1000000 }
+    'gemini-1.5-flash': { input: 0.075 / 1000000, output: 0.30 / 1000000 },
+    'gemini-1.5-pro': { input: 1.25 / 1000000, output: 5.00 / 1000000 }
   };
-  const modelCost = costs[model as keyof typeof costs] || costs['gemini-2.0-flash'];
+  const modelCost = costs[model as keyof typeof costs] || costs['gemini-1.5-flash'];
   return (inputTokens * modelCost.input + outputTokens * modelCost.output);
 }
 
@@ -834,7 +834,7 @@ class GeminiService {
   private prefilterModel: string;
   private fallbackModel: string;
 
-  constructor(apiKey: string, prefilterModel: string = 'gemini-2.0-flash', fallbackModel: string = 'gemini-2.5-flash') {
+  constructor(apiKey: string, prefilterModel: string = 'gemini-1.5-flash', fallbackModel: string = 'gemini-1.5-pro') {
     this.apiKey = apiKey;
     this.prefilterModel = prefilterModel;
     this.fallbackModel = fallbackModel;
@@ -845,7 +845,7 @@ class GeminiService {
     const prompt = this.createClassificationPrompt(emailContent);
 
     try {
-      const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-experimental:generateContent', {
+      const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -903,7 +903,7 @@ class GeminiService {
     const prompt = this.createExtractionPrompt(emailContent);
 
     try {
-      const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', {
+      const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1115,8 +1115,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       {
         confidenceThreshold: parseFloat(process.env.CONFIDENCE_THRESHOLD || '0.7'),
         enableBatchProcessing: process.env.ENABLE_BATCH_PROCESSING === 'true',
-        geminiPrefilterModel: process.env.GEMINI_MODEL_PREFILTER || 'gemini-2.0-flash',
-        geminiFallbackModel: process.env.GEMINI_MODEL_FALLBACK || 'gemini-2.5-flash',
+        geminiPrefilterModel: process.env.GEMINI_MODEL_PREFILTER || 'gemini-1.5-flash',
+        geminiFallbackModel: process.env.GEMINI_MODEL_FALLBACK || 'gemini-1.5-pro',
         openaiMainModel: process.env.OPENAI_MODEL_MAIN || 'gpt-4o-mini'
       }
     );

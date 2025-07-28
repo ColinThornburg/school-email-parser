@@ -8,9 +8,9 @@ This application extracts important dates and events from school emails using a 
 The application now uses a tiered processing approach to optimize costs while maintaining accuracy:
 
 ### Architecture
-1. **Pre-filter**: Gemini 2.0 Flash ($0.10/$0.40) classifies emails to determine if they contain date information
+1. **Pre-filter**: Gemini 1.5 Flash ($0.075/$0.30) classifies emails to determine if they contain date information
 2. **Main extraction**: GPT-4o mini ($0.60/$2.40) performs primary date parsing
-3. **Fallback**: Gemini 2.5 Flash ($1.25/$10) handles complex cases with low confidence results
+3. **Fallback**: Gemini 1.5 Pro ($1.25/$5.00) handles complex cases with low confidence results
 
 ### Expected Cost Savings
 - **70-85% cost reduction** compared to using GPT-4 Turbo for all processing
@@ -39,16 +39,16 @@ ENABLE_BATCH_PROCESSING=true          # Enable 50% cost savings through batching
 CONFIDENCE_THRESHOLD=0.7              # Threshold for fallback processing (0-1)
 
 # Model Selection
-GEMINI_MODEL_PREFILTER=gemini-2.0-flash     # Pre-filtering model
-GEMINI_MODEL_FALLBACK=gemini-2.5-flash      # Fallback model for complex cases
+GEMINI_MODEL_PREFILTER=gemini-1.5-flash     # Pre-filtering model
+GEMINI_MODEL_FALLBACK=gemini-1.5-pro        # Fallback model for complex cases
 OPENAI_MODEL_MAIN=gpt-4o-mini                # Main extraction model
 ```
 
 ### Default Values
 - `CONFIDENCE_THRESHOLD`: 0.7
 - `ENABLE_BATCH_PROCESSING`: false
-- `GEMINI_MODEL_PREFILTER`: gemini-2.0-flash
-- `GEMINI_MODEL_FALLBACK`: gemini-2.5-flash
+- `GEMINI_MODEL_PREFILTER`: gemini-1.5-flash
+- `GEMINI_MODEL_FALLBACK`: gemini-1.5-pro
 - `OPENAI_MODEL_MAIN`: gpt-4o-mini
 
 ## Processing Modes
