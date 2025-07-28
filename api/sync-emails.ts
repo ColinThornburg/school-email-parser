@@ -1210,26 +1210,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     );
     console.log('Services initialized successfully');
 
-    // Create a new sync session to track this processing run
-    console.log('Creating sync session...');
+    // Create a new sync session to track this processing run (optional)
+    console.log('Attempting to create sync session...');
+    let sessionId: string | null = null;
     const sessionType = forceReprocess ? 'reprocess' : 'sync';
-    const { data: syncSession, error: sessionError } = await supabase
-      .from('sync_sessions')
-      .insert({
-        user_id: userId,
-        session_type: sessionType,
-        lookback_days: parseInt(process.env.EMAIL_LOOKBACK_DAYS || '7'),
-        processing_mode: process.env.ENABLE_BATCH_PROCESSING === 'true' ? 'batch' : 'single'
-      })
-      .select()
-      .single();
+    
+    try {
+      const { data: syncSession, error: sessionError } = await supabase
+        .from('sync_sessions')
+        .insert({
+          user_id: userId,
+          session_type: sessionType,
+          lookback_days: parseInt(process.env.EMAIL_LOOKBACK_DAYS || '7'),
+          processing_mode: process.env.ENABLE_BATCH_PROCESSING === 'true' ? 'batch' : 'single'
+        })
+        .select()
+        .single();
 
-    if (sessionError || !syncSession) {
-      throw new Error(`Failed to create sync session: ${sessionError?.message}`);
+      if (sessionError || !syncSession) {
+        console.warn(`Failed to create sync session: ${sessionError?.message || 'Unknown error'}`);
+        console.warn('Continuing sync without session tracking...');
+      } else {
+        sessionId = syncSession.id;
+        console.log(`Created sync session ${sessionId} (${sessionType})`);
+      }
+    } catch (error) {
+      console.warn('Sync session creation failed (table may not exist):', error);
+      console.warn('Continuing sync without session tracking...');
     }
-
-    const sessionId = syncSession.id;
-    console.log(`Created sync session ${sessionId} (${sessionType})`);
 
     // If force reprocess is enabled, clean up existing data first
     let cleanupCount = 0;
@@ -1524,23 +1532,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         
         // Store failed processing history
         if (processedEmails.length > 0) {
-          await supabase
-            .from('processing_history')
-            .insert({
-              user_id: userId,
-              session_id: sessionId,
-              email_id: processedEmails[processedEmails.length - 1].id,
-              llm_provider: 'gmail',
-              model_name: null,
-              processing_step: 'email_retrieval',
-              processing_time: 0,
-              input_tokens: 0,
-              output_tokens: 0,
-              cost: 0,
-              success_status: false,
-              retry_count: 0,
-              error_message: error instanceof Error ? error.message : 'Unknown error'
-            });
+          try {
+            await supabase
+              .from('processing_history')
+              .insert({
+                user_id: userId,
+                session_id: sessionId,
+                email_id: processedEmails[processedEmails.length - 1].id,
+                llm_provider: 'gmail',
+                model_name: null,
+                processing_step: 'email_retrieval',
+                processing_time: 0,
+                input_tokens: 0,
+                output_tokens: 0,
+                cost: 0,
+                success_status: false,
+                retry_count: 0,
+                error_message: error instanceof Error ? error.message : 'Unknown error'
+              });
+          } catch (historyError) {
+            console.warn('Failed to store Gmail error processing history:', historyError);
+          }
         }
       }
     }
@@ -1564,24 +1576,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         // Store processing history for each cost tracking entry
         for (const cost of llmResults.costTracking) {
-          await supabase
-            .from('processing_history')
-            .insert({
-              user_id: userId,
-              session_id: sessionId,
-              email_id: null, // Batch processing doesn't map to individual emails
-              llm_provider: cost.provider,
-              model_name: cost.model,
-              processing_step: cost.provider === 'gemini' ? 
-                (cost.model.includes('flash') ? 'classification' : 'fallback') : 
-                'extraction',
-              processing_time: Math.round(totalLLMTime / llmResults.costTracking.length), // Distribute time
-              input_tokens: cost.inputTokens,
-              output_tokens: cost.outputTokens,
-              cost: cost.cost,
-              success_status: true,
-              retry_count: 0
-            });
+          try {
+            await supabase
+              .from('processing_history')
+              .insert({
+                user_id: userId,
+                session_id: sessionId,
+                email_id: null, // Batch processing doesn't map to individual emails
+                llm_provider: cost.provider,
+                model_name: cost.model,
+                processing_step: cost.provider === 'gemini' ? 
+                  (cost.model.includes('flash') ? 'classification' : 'fallback') : 
+                  'extraction',
+                processing_time: Math.round(totalLLMTime / llmResults.costTracking.length), // Distribute time
+                input_tokens: cost.inputTokens,
+                output_tokens: cost.outputTokens,
+                cost: cost.cost,
+                success_status: true,
+                retry_count: 0
+              });
+          } catch (historyError) {
+            console.warn('Failed to store processing history:', historyError);
+          }
         }
 
         // Process and store extracted events
@@ -1638,50 +1654,63 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         console.error('LLM processing error:', error);
         
         // Store failed processing history
-        await supabase
-          .from('processing_history')
-          .insert({
-            user_id: userId,
-            session_id: sessionId,
-            email_id: null,
-            llm_provider: 'orchestrator',
-            model_name: null,
-            processing_step: 'orchestration',
-            processing_time: 0,
-            input_tokens: 0,
-            output_tokens: 0,
-            cost: 0,
-            success_status: false,
-            retry_count: 0,
-            error_message: error instanceof Error ? error.message : 'Unknown error'
-          });
+        try {
+          await supabase
+            .from('processing_history')
+            .insert({
+              user_id: userId,
+              session_id: sessionId,
+              email_id: null,
+              llm_provider: 'orchestrator',
+              model_name: null,
+              processing_step: 'orchestration',
+              processing_time: 0,
+              input_tokens: 0,
+              output_tokens: 0,
+              cost: 0,
+              success_status: false,
+              retry_count: 0,
+              error_message: error instanceof Error ? error.message : 'Unknown error'
+            });
+        } catch (historyError) {
+          console.warn('Failed to store error processing history:', historyError);
+        }
       }
     }
 
     console.log(`Finished processing all emails. Total processed: ${processedEmails.length}, Total dates extracted: ${extractedDates.length}, Skipped duplicate emails: ${skippedDuplicateEmails}, Skipped duplicate events: ${skippedDuplicateEvents}`);
 
-    // Calculate total cost from processing history for this session
-    const { data: sessionCosts } = await supabase
-      .from('processing_history')
-      .select('cost')
-      .eq('session_id', sessionId);
+    // Update sync session with final results (if session tracking is enabled)
+    if (sessionId) {
+      try {
+        // Calculate total cost from processing history for this session
+        const { data: sessionCosts } = await supabase
+          .from('processing_history')
+          .select('cost')
+          .eq('session_id', sessionId);
 
-    const totalSessionCost = sessionCosts?.reduce((sum, item) => sum + parseFloat(item.cost || '0'), 0) || 0;
+        const totalSessionCost = sessionCosts?.reduce((sum, item) => sum + parseFloat(item.cost || '0'), 0) || 0;
 
-    // Update sync session with final results
-    await supabase
-      .from('sync_sessions')
-      .update({
-        total_emails_processed: processedEmails.length,
-        total_events_extracted: extractedDates.length,
-        total_cost: totalSessionCost,
-        duplicates_removed: cleanupCount,
-        skipped_duplicate_emails: skippedDuplicateEmails,
-        skipped_duplicate_events: skippedDuplicateEvents,
-        completed_at: new Date().toISOString(),
-        success_status: true
-      })
-      .eq('id', sessionId);
+        // Update sync session with final results
+        await supabase
+          .from('sync_sessions')
+          .update({
+            total_emails_processed: processedEmails.length,
+            total_events_extracted: extractedDates.length,
+            total_cost: totalSessionCost,
+            duplicates_removed: cleanupCount,
+            skipped_duplicate_emails: skippedDuplicateEmails,
+            skipped_duplicate_events: skippedDuplicateEvents,
+            completed_at: new Date().toISOString(),
+            success_status: true
+          })
+          .eq('id', sessionId);
+        
+        console.log(`Updated sync session ${sessionId} with final results`);
+      } catch (updateError) {
+        console.warn('Failed to update sync session:', updateError);
+      }
+    }
 
     // Update user's last sync timestamp
     await supabase
@@ -1689,7 +1718,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .update({ last_sync_at: new Date().toISOString() })
       .eq('id', userId);
 
-    console.log('Updated sync session and user last sync timestamp');
+    console.log(`Updated user last sync timestamp${sessionId ? ' and sync session' : ' (no session tracking)'}`);
 
     const responseMessage = forceReprocess 
       ? 'Email reprocessing completed successfully'
