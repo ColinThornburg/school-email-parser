@@ -180,55 +180,58 @@ class OpenAIService {
     const prompt = this.createOptimizedPrompt(emailContent);
 
     try {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`
-        },
-        body: JSON.stringify({
-          model: this.model,
-          messages: [
-            {
-              role: 'system',
-              content: this.systemPrompt
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          temperature: 0.1,
-          max_tokens: 800,
-          response_format: { type: "json_object" }
-        })
-      });
+      return await retryApiCall(async () => {
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${this.apiKey}`
+          },
+          body: JSON.stringify({
+            model: this.model,
+            messages: [
+              {
+                role: 'system',
+                content: this.systemPrompt
+              },
+              {
+                role: 'user',
+                content: prompt
+              }
+            ],
+            temperature: 0.1,
+            max_tokens: 800,
+            response_format: { type: "json_object" }
+          })
+        });
 
-      if (!response.ok) {
-        throw new Error(`OpenAI API error: ${response.statusText}`);
-      }
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => 'Unable to read error response');
+          throw new Error(`OpenAI API error: ${response.status} ${response.statusText} - ${errorText}`);
+        }
 
-      const data = await response.json();
-      const content = data.choices[0]?.message?.content;
+        const data = await response.json();
+        const content = data.choices[0]?.message?.content;
 
-      if (!content) {
-        throw new Error('No response content from OpenAI');
-      }
+        if (!content) {
+          throw new Error('No response content from OpenAI');
+        }
 
-      console.log('OpenAI response:', content);
-      
-      let parsedData;
-      try {
-        parsedData = JSON.parse(content);
-        const events = parsedData.events || [];
-        return this.validateAndNormalizeResponse(events, emailContent.sentDate);
-      } catch (parseError) {
-        console.error('JSON parsing failed. Raw content:', content);
-        throw new Error(`Invalid JSON response from OpenAI: ${parseError instanceof Error ? parseError.message : 'Unknown parsing error'}`);
-      }
+        console.log('OpenAI response received, parsing...');
+        
+        let parsedData;
+        try {
+          parsedData = JSON.parse(content);
+          const events = parsedData.events || [];
+          return this.validateAndNormalizeResponse(events, emailContent.sentDate);
+        } catch (parseError) {
+          console.error('JSON parsing failed. Raw content:', content);
+          throw new Error(`Invalid JSON response from OpenAI: ${parseError instanceof Error ? parseError.message : 'Unknown parsing error'}`);
+        }
+      }, 3, 1000, 'OpenAI');
 
     } catch (error) {
-      console.error('OpenAI API error:', error);
+      console.error('OpenAI API error after retries:', error);
       throw new Error(`Failed to extract dates: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -809,6 +812,63 @@ function estimateTokenUsage(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
+// Helper function for API calls with retry logic
+async function retryApiCall<T>(
+  apiCall: () => Promise<T>,
+  maxRetries: number = 3,
+  baseDelay: number = 1000,
+  apiName: string = 'API'
+): Promise<T> {
+  let lastError: Error;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      if (attempt === 1) {
+        console.log(`${apiName} call starting...`);
+      } else {
+        console.log(`${apiName} retry attempt ${attempt}/${maxRetries}`);
+      }
+      return await apiCall();
+    } catch (error) {
+      lastError = error as Error;
+      
+      // Log error details only for non-transient issues or final attempt
+      const errorMessage = error instanceof Error ? error.message.toLowerCase() : '';
+      const isTransientError = errorMessage.includes('bad gateway') || 
+                              errorMessage.includes('timeout') || 
+                              errorMessage.includes('service unavailable') ||
+                              errorMessage.includes('too many requests');
+      
+      if (!isTransientError || attempt === maxRetries) {
+        console.error(`${apiName} attempt ${attempt} failed:`, error);
+      } else {
+        console.warn(`${apiName} attempt ${attempt} failed with transient error (${errorMessage}), will retry`);
+      }
+      
+      // Don't retry on certain errors (authentication, invalid request format)
+      if (error instanceof Error) {
+        if (errorMessage.includes('unauthorized') || 
+            errorMessage.includes('forbidden') || 
+            errorMessage.includes('invalid') ||
+            errorMessage.includes('not found')) {
+          console.log(`${apiName} non-retryable error, not retrying`);
+          throw error;
+        }
+      }
+      
+      // Don't delay after the last attempt
+      if (attempt < maxRetries) {
+        const delay = baseDelay * Math.pow(2, attempt - 1); // Exponential backoff
+        console.log(`${apiName} retrying in ${delay}ms due to transient error...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+  
+  console.error(`${apiName} failed after ${maxRetries} attempts`);
+  throw lastError!;
+}
+
 // Cost calculation functions
 function calculateOpenAICost(model: string, inputTokens: number, outputTokens: number): number {
   const costs = {
@@ -846,56 +906,59 @@ class GeminiService {
     let content = '';
 
     try {
-      const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': this.apiKey
-        },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{
-              text: prompt
-            }]
-          }],
-          generationConfig: {
-            temperature: 0.1,
-            maxOutputTokens: 100,
-            topP: 0.8,
-            topK: 10
-          }
-        })
-      });
+      return await retryApiCall(async () => {
+        const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': this.apiKey
+          },
+          body: JSON.stringify({
+            contents: [{
+              parts: [{
+                text: prompt
+              }]
+            }],
+            generationConfig: {
+              temperature: 0.1,
+              maxOutputTokens: 100,
+              topP: 0.8,
+              topK: 10
+            }
+          })
+        });
 
-      if (!response.ok) {
-        throw new Error(`Gemini API error: ${response.statusText}`);
-      }
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => 'Unable to read error response');
+          throw new Error(`Gemini API error: ${response.status} ${response.statusText} - ${errorText}`);
+        }
 
-      const data = await response.json();
-      content = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        const data = await response.json();
+        content = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
-      if (!content) {
-        throw new Error('No response content from Gemini');
-      }
+        if (!content) {
+          throw new Error('No response content from Gemini');
+        }
 
-      // Parse classification response with robust JSON cleaning
-      let cleanedContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      
-      // Additional JSON sanitization for common Gemini issues
-      cleanedContent = cleanedContent.replace(/[\r\n\t]/g, ' '); // Remove newlines/tabs
-      cleanedContent = cleanedContent.replace(/\s+/g, ' '); // Normalize whitespace
-      cleanedContent = cleanedContent.replace(/,\s*}/, '}'); // Remove trailing commas
-      cleanedContent = cleanedContent.replace(/,\s*]/, ']'); // Remove trailing commas in arrays
-      
-      console.log('Attempting to parse Gemini JSON:', cleanedContent.substring(0, 200) + '...');
-      
-      const classification = JSON.parse(cleanedContent);
-      
-      return {
-        hasDateContent: classification.hasDateContent || false,
-        confidence: Math.max(0, Math.min(1, classification.confidence || 0)),
-        reasoning: classification.reasoning || ''
-      };
+        // Parse classification response with robust JSON cleaning
+        let cleanedContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+        
+        // Additional JSON sanitization for common Gemini issues
+        cleanedContent = cleanedContent.replace(/[\r\n\t]/g, ' '); // Remove newlines/tabs
+        cleanedContent = cleanedContent.replace(/\s+/g, ' '); // Normalize whitespace
+        cleanedContent = cleanedContent.replace(/,\s*}/, '}'); // Remove trailing commas
+        cleanedContent = cleanedContent.replace(/,\s*]/, ']'); // Remove trailing commas in arrays
+        
+        console.log('Attempting to parse Gemini JSON:', cleanedContent.substring(0, 200) + '...');
+        
+        const classification = JSON.parse(cleanedContent);
+        
+        return {
+          hasDateContent: classification.hasDateContent || false,
+          confidence: Math.max(0, Math.min(1, classification.confidence || 0)),
+          reasoning: classification.reasoning || ''
+        };
+      }, 3, 1000, 'Gemini');
 
     } catch (error) {
       console.error('Gemini classification error:', error);
@@ -925,46 +988,49 @@ class GeminiService {
     const prompt = this.createExtractionPrompt(emailContent);
 
     try {
-      const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': this.apiKey
-        },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{
-              text: prompt
-            }]
-          }],
-          generationConfig: {
-            temperature: 0.1,
-            maxOutputTokens: 1500,
-            topP: 0.9,
-            topK: 40
-          }
-        })
-      });
+      return await retryApiCall(async () => {
+        const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': this.apiKey
+          },
+          body: JSON.stringify({
+            contents: [{
+              parts: [{
+                text: prompt
+              }]
+            }],
+            generationConfig: {
+              temperature: 0.1,
+              maxOutputTokens: 1500,
+              topP: 0.9,
+              topK: 40
+            }
+          })
+        });
 
-      if (!response.ok) {
-        throw new Error(`Gemini API error: ${response.statusText}`);
-      }
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => 'Unable to read error response');
+          throw new Error(`Gemini API error: ${response.status} ${response.statusText} - ${errorText}`);
+        }
 
-      const data = await response.json();
-      const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        const data = await response.json();
+        const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
-      if (!content) {
-        throw new Error('No response content from Gemini');
-      }
+        if (!content) {
+          throw new Error('No response content from Gemini');
+        }
 
-      // Parse extraction response
-      const cleanedContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      const events = JSON.parse(cleanedContent);
-      
-      return this.validateAndNormalizeResponse(events, emailContent.sentDate);
+        // Parse extraction response
+        const cleanedContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+        const events = JSON.parse(cleanedContent);
+        
+        return this.validateAndNormalizeResponse(events, emailContent.sentDate);
+      }, 3, 1000, 'Gemini Extraction');
 
     } catch (error) {
-      console.error('Gemini extraction error:', error);
+      console.error('Gemini extraction error after retries:', error);
       return [];
     }
   }
