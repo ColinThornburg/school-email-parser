@@ -48,15 +48,42 @@ CREATE TABLE extracted_dates (
   is_verified BOOLEAN DEFAULT FALSE
 );
 
--- Processing history table
+-- Sync sessions table (groups related processing activities)
+CREATE TABLE sync_sessions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  session_type VARCHAR(20) NOT NULL, -- 'sync' or 'reprocess'
+  lookback_days INTEGER NOT NULL,
+  processing_mode VARCHAR(20) NOT NULL, -- 'single' or 'batch'
+  total_emails_processed INTEGER DEFAULT 0,
+  total_events_extracted INTEGER DEFAULT 0,
+  total_cost DECIMAL(10, 6) DEFAULT 0,
+  duplicates_removed INTEGER DEFAULT 0,
+  skipped_duplicate_emails INTEGER DEFAULT 0,
+  skipped_duplicate_events INTEGER DEFAULT 0,
+  started_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  completed_at TIMESTAMP WITH TIME ZONE,
+  success_status BOOLEAN DEFAULT true,
+  error_message TEXT
+);
+
+-- Enhanced processing history table
 CREATE TABLE processing_history (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  session_id UUID REFERENCES sync_sessions(id) ON DELETE CASCADE,
   email_id UUID REFERENCES processed_emails(id) ON DELETE CASCADE,
-  llm_provider VARCHAR(50) NOT NULL,
+  llm_provider VARCHAR(50) NOT NULL, -- 'openai', 'gemini', 'orchestrator'
+  model_name VARCHAR(100), -- specific model used
+  processing_step VARCHAR(50), -- 'classification', 'extraction', 'fallback'
   processing_time INTEGER NOT NULL, -- in milliseconds
-  token_usage INTEGER NOT NULL,
+  input_tokens INTEGER DEFAULT 0,
+  output_tokens INTEGER DEFAULT 0,
+  total_tokens INTEGER GENERATED ALWAYS AS (input_tokens + output_tokens) STORED,
+  cost DECIMAL(10, 6) DEFAULT 0,
   success_status BOOLEAN NOT NULL,
+  confidence_score DECIMAL(3, 2), -- for extracted events
+  retry_count INTEGER DEFAULT 0,
   error_message TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -69,13 +96,18 @@ CREATE INDEX idx_processed_emails_user_id ON processed_emails(user_id);
 CREATE INDEX idx_processed_emails_gmail_message_id ON processed_emails(gmail_message_id);
 CREATE INDEX idx_extracted_dates_user_id ON extracted_dates(user_id);
 CREATE INDEX idx_extracted_dates_event_date ON extracted_dates(event_date);
+CREATE INDEX idx_sync_sessions_user_id ON sync_sessions(user_id);
+CREATE INDEX idx_sync_sessions_started_at ON sync_sessions(started_at);
 CREATE INDEX idx_processing_history_user_id ON processing_history(user_id);
+CREATE INDEX idx_processing_history_session_id ON processing_history(session_id);
+CREATE INDEX idx_processing_history_created_at ON processing_history(created_at);
 
 -- Row Level Security (RLS) policies
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE email_sources ENABLE ROW LEVEL SECURITY;
 ALTER TABLE processed_emails ENABLE ROW LEVEL SECURITY;
 ALTER TABLE extracted_dates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sync_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE processing_history ENABLE ROW LEVEL SECURITY;
 
 -- Policies for users table
@@ -102,6 +134,12 @@ ALTER TABLE extracted_dates DISABLE ROW LEVEL SECURITY;
 -- CREATE POLICY "Users can insert own extracted dates" ON extracted_dates FOR INSERT WITH CHECK (auth.uid() = user_id);
 -- CREATE POLICY "Users can update own extracted dates" ON extracted_dates FOR UPDATE USING (auth.uid() = user_id);
 -- CREATE POLICY "Users can delete own extracted dates" ON extracted_dates FOR DELETE USING (auth.uid() = user_id);
+
+-- Policies for sync_sessions table
+ALTER TABLE sync_sessions DISABLE ROW LEVEL SECURITY;
+-- CREATE POLICY "Users can view own sync sessions" ON sync_sessions FOR SELECT USING (auth.uid() = user_id);
+-- CREATE POLICY "Users can insert own sync sessions" ON sync_sessions FOR INSERT WITH CHECK (auth.uid() = user_id);
+-- CREATE POLICY "Users can update own sync sessions" ON sync_sessions FOR UPDATE USING (auth.uid() = user_id);
 
 -- Policies for processing_history table
 -- Drop existing policies if they exist to avoid conflicts

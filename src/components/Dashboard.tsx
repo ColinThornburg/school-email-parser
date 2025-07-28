@@ -2,16 +2,17 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
 import Calendar from './ui/calendar'
-import { Calendar as CalendarIcon, Settings, Mail, Clock, CheckCircle, LogIn, RefreshCw, X } from 'lucide-react'
+import { Calendar as CalendarIcon, Settings, Mail, Clock, CheckCircle, LogIn, RefreshCw, X, BarChart3 } from 'lucide-react'
 import { ExtractedDate } from '../types'
 import { formatDate } from '../lib/utils'
 import { createGmailService } from '../lib/gmail'
 import { supabase } from '../lib/supabase'
 import EmailSourceManager from './EmailSourceManager'
+import ProcessingDashboard from './ProcessingDashboard'
 
 export default function Dashboard() {
   const [events, setEvents] = useState<ExtractedDate[]>([])
-  const [view, setView] = useState<'calendar' | 'list'>('calendar')
+  const [view, setView] = useState<'calendar' | 'list' | 'processing'>('calendar')
   const [user, setUser] = useState<any>(null)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
@@ -287,6 +288,13 @@ export default function Dashboard() {
             <Mail className="h-4 w-4 mr-2" />
             List
           </Button>
+          <Button
+            variant={view === 'processing' ? 'default' : 'outline'}
+            onClick={() => setView('processing')}
+          >
+            <BarChart3 className="h-4 w-4 mr-2" />
+            Processing
+          </Button>
           <Button 
             variant="outline" 
             onClick={() => setShowSettings(!showSettings)}
@@ -381,7 +389,8 @@ export default function Dashboard() {
           <Card>
             <CardHeader>
               <CardTitle>
-                {view === 'calendar' ? 'Weekly Calendar View' : 'Event List'}
+                {view === 'calendar' ? 'Weekly Calendar View' : 
+                 view === 'list' ? 'Event List' : 'Processing Dashboard'}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -390,7 +399,7 @@ export default function Dashboard() {
                   events={events} 
                   onEventClick={handleEventClick}
                 />
-              ) : (
+              ) : view === 'list' ? (
                 <div className="space-y-4">
                   {events.length === 0 ? (
                     <div className="text-center py-12 text-muted-foreground">
@@ -442,6 +451,8 @@ export default function Dashboard() {
                     ))
                   )}
                 </div>
+              ) : (
+                <ProcessingDashboard />
               )}
             </CardContent>
           </Card>
