@@ -153,7 +153,7 @@ async function eventExists(
     .eq('user_id', userId)
     .eq('event_title', title.trim())
     .eq('event_date', date)
-    .eq('event_time', time || null)
+    .eq('event_time', time && time !== 'null' ? time : null)
     .limit(1);
 
   if (error) {
@@ -843,6 +843,7 @@ class GeminiService {
   // Pre-filter emails to determine if they likely contain date information
   async classifyEmail(emailContent: EmailContent): Promise<EmailClassification> {
     const prompt = this.createClassificationPrompt(emailContent);
+    let content = '';
 
     try {
       const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent', {
@@ -871,14 +872,23 @@ class GeminiService {
       }
 
       const data = await response.json();
-      const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      content = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
       if (!content) {
         throw new Error('No response content from Gemini');
       }
 
-      // Parse classification response
-      const cleanedContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      // Parse classification response with robust JSON cleaning
+      let cleanedContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      
+      // Additional JSON sanitization for common Gemini issues
+      cleanedContent = cleanedContent.replace(/[\r\n\t]/g, ' '); // Remove newlines/tabs
+      cleanedContent = cleanedContent.replace(/\s+/g, ' '); // Normalize whitespace
+      cleanedContent = cleanedContent.replace(/,\s*}/, '}'); // Remove trailing commas
+      cleanedContent = cleanedContent.replace(/,\s*]/, ']'); // Remove trailing commas in arrays
+      
+      console.log('Attempting to parse Gemini JSON:', cleanedContent.substring(0, 200) + '...');
+      
       const classification = JSON.parse(cleanedContent);
       
       return {
@@ -889,7 +899,19 @@ class GeminiService {
 
     } catch (error) {
       console.error('Gemini classification error:', error);
-      // Default to processing if classification fails
+      
+      // If it's a JSON parsing error, try to extract boolean from text
+      if (error instanceof SyntaxError && content) {
+        console.log('Attempting text-based classification fallback...');
+        const hasDate = /true|yes|contains|found|date|time|event|deadline/i.test(content);
+        return {
+          hasDateContent: hasDate,
+          confidence: 0.3,
+          reasoning: 'JSON parsing failed, used text analysis fallback'
+        };
+      }
+      
+      // Default to processing if classification fails completely
       return {
         hasDateContent: true,
         confidence: 0.5,
@@ -1226,15 +1248,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // Build Gmail search query (reduced to 7 days for testing)
+    // Build Gmail search query with optimized lookback window
     const senderEmails = emailSources.map(source => source.email);
-    const query = `from:(${senderEmails.join(' OR ')}) newer_than:7d`;
+    // Use shorter lookback for full refresh to avoid timeouts, longer for normal sync
+    const lookbackDays = forceReprocess ? '3d' : '7d';
+    const query = `from:(${senderEmails.join(' OR ')}) newer_than:${lookbackDays}`;
     console.log(`Gmail search query: ${query}`);
     console.log(`Searching for emails from ${senderEmails.length} configured sources: ${senderEmails.join(', ')}`);
 
-    // Fetch emails from Gmail (reduced to 10 for testing)
+    // Fetch emails from Gmail with optimized batch size
+    // Use smaller batch for full refresh to avoid timeouts
+    const maxResults = forceReprocess ? 5 : 10;
     const messagesResponse = await gmailService.listMessages(accessToken, {
-      maxResults: 10,
+      maxResults: maxResults,
       q: query
     });
 
@@ -1402,6 +1428,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Second pass: Process emails through LLM Orchestrator
     console.log(`\nStarting tiered LLM processing for ${emailContentsToProcess.length} emails...`);
+    console.log(`Estimated processing time: ${emailContentsToProcess.length * 2}s (may timeout after 30s if too many emails)`);
     
     if (emailContentsToProcess.length > 0) {
       try {
@@ -1461,7 +1488,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 user_id: userId,
                 event_title: event.title,
                 event_date: event.date,
-                event_time: event.time,
+                event_time: event.time && event.time !== 'null' ? event.time : null,
                 description: event.description,
                 confidence_score: event.confidence,
                 is_verified: false,

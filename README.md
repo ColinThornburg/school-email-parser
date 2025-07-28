@@ -47,8 +47,8 @@ OPENAI_MODEL_MAIN=gpt-4o-mini                # Main extraction model
 ### Default Values
 - `CONFIDENCE_THRESHOLD`: 0.7
 - `ENABLE_BATCH_PROCESSING`: false
-- `GEMINI_MODEL_PREFILTER`: gemini-1.5-flash
-- `GEMINI_MODEL_FALLBACK`: gemini-1.5-pro
+- `GEMINI_MODEL_PREFILTER`: gemini-2.0-flash
+- `GEMINI_MODEL_FALLBACK`: gemini-2.5-flash
 - `OPENAI_MODEL_MAIN`: gpt-4o-mini
 
 ## Processing Modes
