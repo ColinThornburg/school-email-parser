@@ -2,7 +2,7 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Users table
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   email VARCHAR(255) UNIQUE NOT NULL,
   gmail_token TEXT,
@@ -12,7 +12,7 @@ CREATE TABLE users (
 );
 
 -- Email sources table
-CREATE TABLE email_sources (
+CREATE TABLE IF NOT EXISTS email_sources (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID REFERENCES users(id) ON DELETE CASCADE,
   email VARCHAR(255) NOT NULL,
@@ -22,7 +22,7 @@ CREATE TABLE email_sources (
 );
 
 -- Processed emails table
-CREATE TABLE processed_emails (
+CREATE TABLE IF NOT EXISTS processed_emails (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID REFERENCES users(id) ON DELETE CASCADE,
   gmail_message_id VARCHAR(255) UNIQUE NOT NULL,
@@ -35,7 +35,7 @@ CREATE TABLE processed_emails (
 );
 
 -- Extracted dates table
-CREATE TABLE extracted_dates (
+CREATE TABLE IF NOT EXISTS extracted_dates (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   email_id UUID REFERENCES processed_emails(id) ON DELETE CASCADE,
   user_id UUID REFERENCES users(id) ON DELETE CASCADE,
@@ -49,7 +49,7 @@ CREATE TABLE extracted_dates (
 );
 
 -- Sync sessions table (groups related processing activities)
-CREATE TABLE sync_sessions (
+CREATE TABLE IF NOT EXISTS sync_sessions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID REFERENCES users(id) ON DELETE CASCADE,
   session_type VARCHAR(20) NOT NULL, -- 'sync' or 'reprocess'
@@ -68,7 +68,7 @@ CREATE TABLE sync_sessions (
 );
 
 -- Enhanced processing history table
-CREATE TABLE processing_history (
+CREATE TABLE IF NOT EXISTS processing_history (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID REFERENCES users(id) ON DELETE CASCADE,
   session_id UUID REFERENCES sync_sessions(id) ON DELETE CASCADE,
@@ -88,66 +88,234 @@ CREATE TABLE processing_history (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Indexes for performance
-CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_email_sources_user_id ON email_sources(user_id);
-CREATE INDEX idx_email_sources_email ON email_sources(email);
-CREATE INDEX idx_processed_emails_user_id ON processed_emails(user_id);
-CREATE INDEX idx_processed_emails_gmail_message_id ON processed_emails(gmail_message_id);
-CREATE INDEX idx_extracted_dates_user_id ON extracted_dates(user_id);
-CREATE INDEX idx_extracted_dates_event_date ON extracted_dates(event_date);
-CREATE INDEX idx_sync_sessions_user_id ON sync_sessions(user_id);
-CREATE INDEX idx_sync_sessions_started_at ON sync_sessions(started_at);
-CREATE INDEX idx_processing_history_user_id ON processing_history(user_id);
-CREATE INDEX idx_processing_history_session_id ON processing_history(session_id);
-CREATE INDEX idx_processing_history_created_at ON processing_history(created_at);
+-- Add missing columns to existing processing_history table
+DO $$ 
+BEGIN
+    -- Add session_id column if it doesn't exist
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'processing_history' 
+        AND column_name = 'session_id'
+    ) THEN
+        ALTER TABLE processing_history ADD COLUMN session_id UUID REFERENCES sync_sessions(id) ON DELETE CASCADE;
+    END IF;
 
--- Row Level Security (RLS) policies
-ALTER TABLE users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE email_sources ENABLE ROW LEVEL SECURITY;
-ALTER TABLE processed_emails ENABLE ROW LEVEL SECURITY;
-ALTER TABLE extracted_dates ENABLE ROW LEVEL SECURITY;
-ALTER TABLE sync_sessions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE processing_history ENABLE ROW LEVEL SECURITY;
+    -- Add model_name column if it doesn't exist
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'processing_history' 
+        AND column_name = 'model_name'
+    ) THEN
+        ALTER TABLE processing_history ADD COLUMN model_name VARCHAR(100);
+    END IF;
+
+    -- Add processing_step column if it doesn't exist
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'processing_history' 
+        AND column_name = 'processing_step'
+    ) THEN
+        ALTER TABLE processing_history ADD COLUMN processing_step VARCHAR(50);
+    END IF;
+
+    -- Add input_tokens column if it doesn't exist
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'processing_history' 
+        AND column_name = 'input_tokens'
+    ) THEN
+        ALTER TABLE processing_history ADD COLUMN input_tokens INTEGER DEFAULT 0;
+    END IF;
+
+    -- Add output_tokens column if it doesn't exist
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'processing_history' 
+        AND column_name = 'output_tokens'
+    ) THEN
+        ALTER TABLE processing_history ADD COLUMN output_tokens INTEGER DEFAULT 0;
+    END IF;
+
+    -- Add total_tokens column if it doesn't exist
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'processing_history' 
+        AND column_name = 'total_tokens'
+    ) THEN
+        ALTER TABLE processing_history ADD COLUMN total_tokens INTEGER GENERATED ALWAYS AS (input_tokens + output_tokens) STORED;
+    END IF;
+
+    -- Add cost column if it doesn't exist
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'processing_history' 
+        AND column_name = 'cost'
+    ) THEN
+        ALTER TABLE processing_history ADD COLUMN cost DECIMAL(10, 6) DEFAULT 0;
+    END IF;
+
+    -- Add confidence_score column if it doesn't exist
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'processing_history' 
+        AND column_name = 'confidence_score'
+    ) THEN
+        ALTER TABLE processing_history ADD COLUMN confidence_score DECIMAL(3, 2);
+    END IF;
+
+    -- Add retry_count column if it doesn't exist
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'processing_history' 
+        AND column_name = 'retry_count'
+    ) THEN
+        ALTER TABLE processing_history ADD COLUMN retry_count INTEGER DEFAULT 0;
+    END IF;
+
+EXCEPTION
+    WHEN others THEN
+        -- Table might not exist yet, ignore errors
+        NULL;
+END $$;
+
+-- Indexes for performance (conditional creation)
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_email_sources_user_id ON email_sources(user_id);
+CREATE INDEX IF NOT EXISTS idx_email_sources_email ON email_sources(email);
+CREATE INDEX IF NOT EXISTS idx_processed_emails_user_id ON processed_emails(user_id);
+CREATE INDEX IF NOT EXISTS idx_processed_emails_gmail_message_id ON processed_emails(gmail_message_id);
+CREATE INDEX IF NOT EXISTS idx_extracted_dates_user_id ON extracted_dates(user_id);
+CREATE INDEX IF NOT EXISTS idx_extracted_dates_event_date ON extracted_dates(event_date);
+CREATE INDEX IF NOT EXISTS idx_sync_sessions_user_id ON sync_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_sync_sessions_started_at ON sync_sessions(started_at);
+CREATE INDEX IF NOT EXISTS idx_processing_history_user_id ON processing_history(user_id);
+CREATE INDEX IF NOT EXISTS idx_processing_history_session_id ON processing_history(session_id);
+CREATE INDEX IF NOT EXISTS idx_processing_history_created_at ON processing_history(created_at);
+
+-- Row Level Security (RLS) policies - Enable RLS only if not already enabled
+DO $$ 
+BEGIN
+    -- Enable RLS for all tables (safe to run multiple times)
+    ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE email_sources ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE processed_emails ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE extracted_dates ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE sync_sessions ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE processing_history ENABLE ROW LEVEL SECURITY;
+EXCEPTION
+    WHEN others THEN
+        -- Tables might not exist yet, ignore errors
+        NULL;
+END $$;
 
 -- Policies for users table
-CREATE POLICY "Users can view own profile" ON users FOR SELECT USING (auth.uid() = id);
-CREATE POLICY "Users can update own profile" ON users FOR UPDATE USING (auth.uid() = id);
+DO $$ 
+BEGIN
+    -- Drop existing policies if they exist to avoid conflicts
+    DROP POLICY IF EXISTS "Users can view own profile" ON users;
+    DROP POLICY IF EXISTS "Users can update own profile" ON users;
+    
+    -- Create policies
+    CREATE POLICY "Users can view own profile" ON users FOR SELECT USING (auth.uid() = id);
+    CREATE POLICY "Users can update own profile" ON users FOR UPDATE USING (auth.uid() = id);
+EXCEPTION
+    WHEN others THEN
+        -- Table might not exist yet, ignore errors
+        NULL;
+END $$;
 
--- Policies for email_sources table
-ALTER TABLE email_sources DISABLE ROW LEVEL SECURITY;
--- CREATE POLICY "Users can view own email sources" ON email_sources FOR SELECT USING (auth.uid() = user_id);
--- CREATE POLICY "Users can insert own email sources" ON email_sources FOR INSERT WITH CHECK (auth.uid() = user_id);
--- CREATE POLICY "Users can update own email sources" ON email_sources FOR UPDATE USING (auth.uid() = user_id);
--- CREATE POLICY "Users can delete own email sources" ON email_sources FOR DELETE USING (auth.uid() = user_id);
+-- Policies for email_sources table (currently disabled for development)
+DO $$ 
+BEGIN
+    ALTER TABLE email_sources DISABLE ROW LEVEL SECURITY;
+    -- Commented out policies for development
+    -- DROP POLICY IF EXISTS "Users can view own email sources" ON email_sources;
+    -- DROP POLICY IF EXISTS "Users can insert own email sources" ON email_sources;
+    -- DROP POLICY IF EXISTS "Users can update own email sources" ON email_sources;
+    -- DROP POLICY IF EXISTS "Users can delete own email sources" ON email_sources;
+    
+    -- CREATE POLICY "Users can view own email sources" ON email_sources FOR SELECT USING (auth.uid() = user_id);
+    -- CREATE POLICY "Users can insert own email sources" ON email_sources FOR INSERT WITH CHECK (auth.uid() = user_id);
+    -- CREATE POLICY "Users can update own email sources" ON email_sources FOR UPDATE USING (auth.uid() = user_id);
+    -- CREATE POLICY "Users can delete own email sources" ON email_sources FOR DELETE USING (auth.uid() = user_id);
+EXCEPTION
+    WHEN others THEN
+        -- Table might not exist yet, ignore errors
+        NULL;
+END $$;
 
--- Policies for processed_emails table
-ALTER TABLE processed_emails DISABLE ROW LEVEL SECURITY;
--- CREATE POLICY "Users can view own processed emails" ON processed_emails FOR SELECT USING (auth.uid() = user_id);
--- CREATE POLICY "Users can insert own processed emails" ON processed_emails FOR INSERT WITH CHECK (auth.uid() = user_id);
--- CREATE POLICY "Users can update own processed emails" ON processed_emails FOR UPDATE USING (auth.uid() = user_id);
--- CREATE POLICY "Users can delete own processed emails" ON processed_emails FOR DELETE USING (auth.uid() = user_id);
+-- Policies for processed_emails table (currently disabled for development)
+DO $$ 
+BEGIN
+    ALTER TABLE processed_emails DISABLE ROW LEVEL SECURITY;
+    -- Commented out policies for development
+    -- DROP POLICY IF EXISTS "Users can view own processed emails" ON processed_emails;
+    -- DROP POLICY IF EXISTS "Users can insert own processed emails" ON processed_emails;
+    -- DROP POLICY IF EXISTS "Users can update own processed emails" ON processed_emails;
+    -- DROP POLICY IF EXISTS "Users can delete own processed emails" ON processed_emails;
+    
+    -- CREATE POLICY "Users can view own processed emails" ON processed_emails FOR SELECT USING (auth.uid() = user_id);
+    -- CREATE POLICY "Users can insert own processed emails" ON processed_emails FOR INSERT WITH CHECK (auth.uid() = user_id);
+    -- CREATE POLICY "Users can update own processed emails" ON processed_emails FOR UPDATE USING (auth.uid() = user_id);
+    -- CREATE POLICY "Users can delete own processed emails" ON processed_emails FOR DELETE USING (auth.uid() = user_id);
+EXCEPTION
+    WHEN others THEN
+        -- Table might not exist yet, ignore errors
+        NULL;
+END $$;
 
--- Policies for extracted_dates table
-ALTER TABLE extracted_dates DISABLE ROW LEVEL SECURITY;
--- CREATE POLICY "Users can view own extracted dates" ON extracted_dates FOR SELECT USING (auth.uid() = user_id);
--- CREATE POLICY "Users can insert own extracted dates" ON extracted_dates FOR INSERT WITH CHECK (auth.uid() = user_id);
--- CREATE POLICY "Users can update own extracted dates" ON extracted_dates FOR UPDATE USING (auth.uid() = user_id);
--- CREATE POLICY "Users can delete own extracted dates" ON extracted_dates FOR DELETE USING (auth.uid() = user_id);
+-- Policies for extracted_dates table (currently disabled for development)
+DO $$ 
+BEGIN
+    ALTER TABLE extracted_dates DISABLE ROW LEVEL SECURITY;
+    -- Commented out policies for development
+    -- DROP POLICY IF EXISTS "Users can view own extracted dates" ON extracted_dates;
+    -- DROP POLICY IF EXISTS "Users can insert own extracted dates" ON extracted_dates;
+    -- DROP POLICY IF EXISTS "Users can update own extracted dates" ON extracted_dates;
+    -- DROP POLICY IF EXISTS "Users can delete own extracted dates" ON extracted_dates;
+    
+    -- CREATE POLICY "Users can view own extracted dates" ON extracted_dates FOR SELECT USING (auth.uid() = user_id);
+    -- CREATE POLICY "Users can insert own extracted dates" ON extracted_dates FOR INSERT WITH CHECK (auth.uid() = user_id);
+    -- CREATE POLICY "Users can update own extracted dates" ON extracted_dates FOR UPDATE USING (auth.uid() = user_id);
+    -- CREATE POLICY "Users can delete own extracted dates" ON extracted_dates FOR DELETE USING (auth.uid() = user_id);
+EXCEPTION
+    WHEN others THEN
+        -- Table might not exist yet, ignore errors
+        NULL;
+END $$;
 
--- Policies for sync_sessions table
-ALTER TABLE sync_sessions DISABLE ROW LEVEL SECURITY;
--- CREATE POLICY "Users can view own sync sessions" ON sync_sessions FOR SELECT USING (auth.uid() = user_id);
--- CREATE POLICY "Users can insert own sync sessions" ON sync_sessions FOR INSERT WITH CHECK (auth.uid() = user_id);
--- CREATE POLICY "Users can update own sync sessions" ON sync_sessions FOR UPDATE USING (auth.uid() = user_id);
+-- Policies for sync_sessions table (currently disabled for development)
+DO $$ 
+BEGIN
+    ALTER TABLE sync_sessions DISABLE ROW LEVEL SECURITY;
+    -- Commented out policies for development
+    -- DROP POLICY IF EXISTS "Users can view own sync sessions" ON sync_sessions;
+    -- DROP POLICY IF EXISTS "Users can insert own sync sessions" ON sync_sessions;
+    -- DROP POLICY IF EXISTS "Users can update own sync sessions" ON sync_sessions;
+    
+    -- CREATE POLICY "Users can view own sync sessions" ON sync_sessions FOR SELECT USING (auth.uid() = user_id);
+    -- CREATE POLICY "Users can insert own sync sessions" ON sync_sessions FOR INSERT WITH CHECK (auth.uid() = user_id);
+    -- CREATE POLICY "Users can update own sync sessions" ON sync_sessions FOR UPDATE USING (auth.uid() = user_id);
+EXCEPTION
+    WHEN others THEN
+        -- Table might not exist yet, ignore errors
+        NULL;
+END $$;
 
 -- Policies for processing_history table
--- Drop existing policies if they exist to avoid conflicts
-DROP POLICY IF EXISTS "Users can view own processing history" ON processing_history;
-DROP POLICY IF EXISTS "Users can insert own processing history" ON processing_history;
+DO $$ 
+BEGIN
+    -- Drop existing policies if they exist to avoid conflicts
+    DROP POLICY IF EXISTS "Users can view own processing history" ON processing_history;
+    DROP POLICY IF EXISTS "Users can insert own processing history" ON processing_history;
 
-CREATE POLICY "Users can view own processing history" ON processing_history FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "Users can insert own processing history" ON processing_history FOR INSERT WITH CHECK (auth.uid() = user_id);
+    CREATE POLICY "Users can view own processing history" ON processing_history FOR SELECT USING (auth.uid() = user_id);
+    CREATE POLICY "Users can insert own processing history" ON processing_history FOR INSERT WITH CHECK (auth.uid() = user_id);
+EXCEPTION
+    WHEN others THEN
+        -- Table might not exist yet, ignore errors
+        NULL;
+END $$;
 
 -- Add unique constraint to prevent duplicate events (only if it doesn't exist)
 DO $$ 
@@ -160,6 +328,8 @@ BEGIN
         ALTER TABLE extracted_dates ADD CONSTRAINT unique_user_event 
         UNIQUE (user_id, event_title, event_date, event_time);
     END IF;
+EXCEPTION
+    WHEN others THEN NULL;
 END $$;
 
 -- Function to find duplicate events (keeps oldest, marks others for deletion)
