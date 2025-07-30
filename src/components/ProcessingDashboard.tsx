@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
-import { supabase } from '../lib/supabase';
 
 // Types for dashboard data
 interface ProcessingHistoryItem {
