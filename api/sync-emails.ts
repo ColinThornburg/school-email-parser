@@ -1239,8 +1239,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.warn('Continuing sync without session tracking...');
     }
 
-    // Initialize cleanup count, but defer cleanup until we know there's work to do
+    // Handle cleanup - for reprocess, do it BEFORE checking emails
     let cleanupCount = 0;
+    
+    if (forceReprocess) {
+      console.log('Force reprocess enabled, performing complete cleanup FIRST...');
+      
+      // For full reprocess, clear ALL extracted dates for this user to avoid duplicates
+      console.log('Removing all existing extracted dates for user...');
+      const { error: deleteDatesError, count: deletedDatesCount } = await supabase
+        .from('extracted_dates')
+        .delete()
+        .eq('user_id', userId);
+      
+      if (deleteDatesError) {
+        console.error('Error deleting existing dates:', deleteDatesError);
+      } else {
+        console.log(`Removed ${deletedDatesCount || 0} existing extracted events`);
+      }
+      
+      // Also clear processed emails so they get reprocessed
+      console.log('Removing processed email records for reprocessing...');
+      const { error: deleteEmailsError, count: deletedEmailsCount } = await supabase
+        .from('processed_emails')
+        .delete()
+        .eq('user_id', userId);
+      
+      if (deleteEmailsError) {
+        console.error('Error deleting processed emails:', deleteEmailsError);
+      } else {
+        console.log(`Removed ${deletedEmailsCount || 0} processed email records`);
+      }
+      
+      cleanupCount = (deletedDatesCount || 0) + (deletedEmailsCount || 0);
+      console.log(`Complete cleanup finished. Removed ${cleanupCount} total records.`);
+    }
 
     // Handle token refresh if needed
     let accessToken = initialAccessToken;
@@ -1330,20 +1363,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Clamp the configured value within reasonable bounds
     const safeLookbackDays = Math.max(minLookbackDays, Math.min(maxLookbackDays, configuredLookbackDays));
     
-    // For full reprocess, use a smaller window to avoid timeouts, but respect user config up to a point
-    const lookbackDays = forceReprocess 
-      ? `${Math.min(safeLookbackDays, 7)}d`  // Max 7 days for reprocess to avoid timeouts
-      : `${safeLookbackDays}d`;
+    // For reprocess, use a much longer lookback to find historical emails
+    // For normal sync, use the configured lookback window
+    let query;
+    if (forceReprocess) {
+      // For reprocess, look back 90 days to find historical emails to reprocess
+      // But limit results to avoid timeouts
+      query = `from:(${senderEmails.join(' OR ')}) newer_than:90d`;
+      console.log('Reprocess mode: Using 90-day lookback to find historical emails');
+    } else {
+      query = `from:(${senderEmails.join(' OR ')}) newer_than:${safeLookbackDays}d`;
+    }
     
-    const query = `from:(${senderEmails.join(' OR ')}) newer_than:${lookbackDays}`;
-    
-    console.log(`Using lookback window: ${lookbackDays} (configured: ${configuredLookbackDays}, safe: ${safeLookbackDays})`);
-    console.log(`Gmail search query: ${query}`);
-    console.log(`Searching for emails from ${senderEmails.length} configured sources: ${senderEmails.join(', ')}`);
-
     // Fetch emails from Gmail with optimized batch size
     // Use smaller batch for full refresh to avoid timeouts
     const maxResults = forceReprocess ? 5 : 10;
+    
+    if (forceReprocess) {
+      console.log(`Using reprocess mode: 90-day lookback with ${maxResults} max results`);
+    } else {
+      console.log(`Using sync mode: ${safeLookbackDays}-day lookback (configured: ${configuredLookbackDays})`);
+    }
+    console.log(`Gmail search query: ${query}`);
+    console.log(`Searching for emails from ${senderEmails.length} configured sources: ${senderEmails.join(', ')}`);
     const messagesResponse = await gmailService.listMessages(accessToken, {
       maxResults: maxResults,
       q: query
@@ -1385,40 +1427,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // Now that we know there are messages to process, perform cleanup if needed
-    if (forceReprocess) {
-      console.log('Force reprocess enabled, performing complete cleanup...');
-      
-      // For full reprocess, clear ALL extracted dates for this user to avoid duplicates
-      console.log('Removing all existing extracted dates for user...');
-      const { error: deleteDatesError, count: deletedDatesCount } = await supabase
-        .from('extracted_dates')
-        .delete()
-        .eq('user_id', userId);
-      
-      if (deleteDatesError) {
-        console.error('Error deleting existing dates:', deleteDatesError);
-      } else {
-        console.log(`Removed ${deletedDatesCount || 0} existing extracted events`);
-      }
-      
-      // Also clear processed emails so they get reprocessed
-      console.log('Removing processed email records for reprocessing...');
-      const { error: deleteEmailsError, count: deletedEmailsCount } = await supabase
-        .from('processed_emails')
-        .delete()
-        .eq('user_id', userId);
-      
-      if (deleteEmailsError) {
-        console.error('Error deleting processed emails:', deleteEmailsError);
-      } else {
-        console.log(`Removed ${deletedEmailsCount || 0} processed email records`);
-      }
-      
-      cleanupCount = (deletedDatesCount || 0) + (deletedEmailsCount || 0);
-      console.log(`Complete cleanup finished. Removed ${cleanupCount} total records.`);
-    } else {
-      // For normal sync, just clean up duplicates (only if we have messages to process)
+    // For normal sync (not reprocess), perform routine duplicate cleanup now that we know there are messages
+    if (!forceReprocess) {
       console.log('Performing routine duplicate cleanup...');
       cleanupCount = await cleanupDuplicateEvents(supabase, userId);
     }
@@ -1598,30 +1608,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         console.log(`Processing stats:`, llmResults.processingStats);
         console.log(`Total cost: $${llmResults.processingStats.totalCost.toFixed(4)}`);
 
-        // Store processing history for each cost tracking entry
-        for (const cost of llmResults.costTracking) {
-          try {
-            await supabase
-              .from('processing_history')
-              .insert({
-                user_id: userId,
-                session_id: sessionId,
-                email_id: null, // Batch processing doesn't map to individual emails
-                llm_provider: cost.provider,
-                model_name: cost.model,
-                processing_step: cost.provider === 'gemini' ? 
-                  (cost.model.includes('flash') ? 'classification' : 'fallback') : 
-                  'extraction',
-                processing_time: Math.round(totalLLMTime / llmResults.costTracking.length), // Distribute time
-                input_tokens: cost.inputTokens,
-                output_tokens: cost.outputTokens,
-                cost: cost.cost,
-                success_status: true,
-                retry_count: 0
-              });
-          } catch (historyError) {
-            console.warn('Failed to store processing history:', historyError);
+        // Store processing history for each cost tracking entry (only if sessionId exists)
+        if (sessionId) {
+          for (const cost of llmResults.costTracking) {
+            try {
+              await supabase
+                .from('processing_history')
+                .insert({
+                  user_id: userId,
+                  session_id: sessionId,
+                  email_id: null, // Batch processing doesn't map to individual emails
+                  llm_provider: cost.provider,
+                  model_name: cost.model,
+                  processing_step: cost.provider === 'gemini' ? 
+                    (cost.model.includes('flash') ? 'classification' : 'fallback') : 
+                    'extraction',
+                  processing_time: Math.round(totalLLMTime / llmResults.costTracking.length), // Distribute time
+                  input_tokens: cost.inputTokens,
+                  output_tokens: cost.outputTokens,
+                  cost: cost.cost,
+                  success_status: true,
+                  retry_count: 0
+                });
+            } catch (historyError) {
+              console.warn('Failed to store processing history:', historyError);
+            }
           }
+        } else {
+          console.log('Skipping processing history storage - session tracking not available');
         }
 
         // Process and store extracted events
@@ -1760,9 +1774,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       processingMode: process.env.ENABLE_BATCH_PROCESSING === 'true' ? 'batch' : 'single',
       lookbackConfiguration: {
         requestedDays: parseInt(process.env.EMAIL_LOOKBACK_DAYS || '7'),
-        actualDays: safeLookbackDays,
-        usedInQuery: lookbackDays,
-        maxAllowed: 30
+        actualDays: forceReprocess ? 90 : safeLookbackDays,
+        usedInQuery: forceReprocess ? '90d' : `${safeLookbackDays}d`,
+        maxAllowed: 30,
+        reprocessMode: forceReprocess
       },
       costOptimization: {
         prefilterEnabled: true,
