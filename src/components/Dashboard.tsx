@@ -452,7 +452,7 @@ export default function Dashboard() {
                   )}
                 </div>
               ) : (
-                <ProcessingDashboard />
+                <ProcessingDashboard user={user} />
               )}
             </CardContent>
           </Card>

@@ -1239,44 +1239,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.warn('Continuing sync without session tracking...');
     }
 
-    // If force reprocess is enabled, clean up existing data first
+    // Initialize cleanup count, but defer cleanup until we know there's work to do
     let cleanupCount = 0;
-    if (forceReprocess) {
-      console.log('Force reprocess enabled, performing complete cleanup...');
-      
-      // For full reprocess, clear ALL extracted dates for this user to avoid duplicates
-      console.log('Removing all existing extracted dates for user...');
-      const { error: deleteDatesError, count: deletedDatesCount } = await supabase
-        .from('extracted_dates')
-        .delete()
-        .eq('user_id', userId);
-      
-      if (deleteDatesError) {
-        console.error('Error deleting existing dates:', deleteDatesError);
-      } else {
-        console.log(`Removed ${deletedDatesCount || 0} existing extracted events`);
-      }
-      
-      // Also clear processed emails so they get reprocessed
-      console.log('Removing processed email records for reprocessing...');
-      const { error: deleteEmailsError, count: deletedEmailsCount } = await supabase
-        .from('processed_emails')
-        .delete()
-        .eq('user_id', userId);
-      
-      if (deleteEmailsError) {
-        console.error('Error deleting processed emails:', deleteEmailsError);
-      } else {
-        console.log(`Removed ${deletedEmailsCount || 0} processed email records`);
-      }
-      
-      cleanupCount = (deletedDatesCount || 0) + (deletedEmailsCount || 0);
-      console.log(`Complete cleanup finished. Removed ${cleanupCount} total records.`);
-    } else {
-      // For normal sync, just clean up duplicates
-      console.log('Performing routine duplicate cleanup...');
-      cleanupCount = await cleanupDuplicateEvents(supabase, userId);
-    }
 
     // Handle token refresh if needed
     let accessToken = initialAccessToken;
@@ -1389,14 +1353,74 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     
     if (!messagesResponse.messages || messagesResponse.messages.length === 0) {
       console.log('No messages found matching the search query');
+      
+      // Update sync session if it exists (no processing done)
+      if (sessionId) {
+        try {
+          await supabase
+            .from('sync_sessions')
+            .update({
+              total_emails_processed: 0,
+              total_events_extracted: 0,
+              total_cost: 0,
+              duplicates_removed: 0,
+              skipped_duplicate_emails: 0,
+              skipped_duplicate_events: 0,
+              completed_at: new Date().toISOString(),
+              success_status: true
+            })
+            .eq('id', sessionId);
+        } catch (updateError) {
+          console.warn('Failed to update sync session:', updateError);
+        }
+      }
+      
       return res.status(200).json({
         message: 'No emails found matching the configured sources',
         processed: 0,
         extracted: 0,
-        duplicatesRemoved: cleanupCount,
+        duplicatesRemoved: 0,
         emails: [],
         dates: []
       });
+    }
+
+    // Now that we know there are messages to process, perform cleanup if needed
+    if (forceReprocess) {
+      console.log('Force reprocess enabled, performing complete cleanup...');
+      
+      // For full reprocess, clear ALL extracted dates for this user to avoid duplicates
+      console.log('Removing all existing extracted dates for user...');
+      const { error: deleteDatesError, count: deletedDatesCount } = await supabase
+        .from('extracted_dates')
+        .delete()
+        .eq('user_id', userId);
+      
+      if (deleteDatesError) {
+        console.error('Error deleting existing dates:', deleteDatesError);
+      } else {
+        console.log(`Removed ${deletedDatesCount || 0} existing extracted events`);
+      }
+      
+      // Also clear processed emails so they get reprocessed
+      console.log('Removing processed email records for reprocessing...');
+      const { error: deleteEmailsError, count: deletedEmailsCount } = await supabase
+        .from('processed_emails')
+        .delete()
+        .eq('user_id', userId);
+      
+      if (deleteEmailsError) {
+        console.error('Error deleting processed emails:', deleteEmailsError);
+      } else {
+        console.log(`Removed ${deletedEmailsCount || 0} processed email records`);
+      }
+      
+      cleanupCount = (deletedDatesCount || 0) + (deletedEmailsCount || 0);
+      console.log(`Complete cleanup finished. Removed ${cleanupCount} total records.`);
+    } else {
+      // For normal sync, just clean up duplicates (only if we have messages to process)
+      console.log('Performing routine duplicate cleanup...');
+      cleanupCount = await cleanupDuplicateEvents(supabase, userId);
     }
 
     const processedEmails: any[] = [];

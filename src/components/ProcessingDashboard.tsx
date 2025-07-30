@@ -71,7 +71,11 @@ interface DashboardData {
   };
 }
 
-export default function ProcessingDashboard() {
+interface Props {
+  user?: any;
+}
+
+export default function ProcessingDashboard({ user: propUser }: Props) {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -83,14 +87,24 @@ export default function ProcessingDashboard() {
       setLoading(true);
       setError(null);
 
-      // Get current user
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('User not authenticated');
+      // Get current user from props or localStorage (matching Dashboard component pattern)
+      let currentUser = propUser;
+      if (!currentUser) {
+        const storedUser = localStorage.getItem('user');
+        if (storedUser) {
+          currentUser = JSON.parse(storedUser);
+        }
+      }
+      
+      if (!currentUser?.id) {
+        throw new Error('User not authenticated - please sign in with Gmail');
+      }
 
       // Fetch dashboard data from our API
-      const response = await fetch(`/api/processing-dashboard?userId=${user.id}&limit=10&offset=${offset}`);
+      const response = await fetch(`/api/processing-dashboard?userId=${currentUser.id}&limit=10&offset=${offset}`);
       if (!response.ok) {
-        throw new Error(`Failed to fetch dashboard data: ${response.statusText}`);
+        const errorText = await response.text();
+        throw new Error(`Failed to fetch dashboard data: ${response.status} ${response.statusText} - ${errorText}`);
       }
 
       const data: DashboardData = await response.json();
