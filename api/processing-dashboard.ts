@@ -88,34 +88,79 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const limitNum = parseInt(limit as string) || 10;
     const offsetNum = parseInt(offset as string) || 0;
 
-    // Fetch sync sessions with processing history
-    const { data: sessions, error: sessionsError } = await supabase
-      .from('sync_sessions')
-      .select(`
-        *,
-        processing_history (
-          id,
-          llm_provider,
-          model_name,
-          processing_step,
-          processing_time,
-          input_tokens,
-          output_tokens,
-          total_tokens,
-          cost,
-          success_status,
-          confidence_score,
-          retry_count,
-          error_message,
-          created_at
-        )
-      `)
-      .eq('user_id', userId)
-      .order('started_at', { ascending: false })
-      .range(offsetNum, offsetNum + limitNum - 1);
+    // Fetch sync sessions with processing history (with fallback for missing schema)
+    let sessions: any[] | null = null;
+    let sessionsError: any = null;
+    
+    try {
+      const result = await supabase
+        .from('sync_sessions')
+        .select(`
+          *,
+          processing_history (
+            id,
+            llm_provider,
+            model_name,
+            processing_step,
+            processing_time,
+            input_tokens,
+            output_tokens,
+            total_tokens,
+            cost,
+            success_status,
+            confidence_score,
+            retry_count,
+            error_message,
+            created_at
+          )
+        `)
+        .eq('user_id', userId)
+        .order('started_at', { ascending: false })
+        .range(offsetNum, offsetNum + limitNum - 1);
+
+      sessions = result.data;
+      sessionsError = result.error;
+    } catch (error) {
+      console.warn('Sync sessions table not available:', error);
+      sessionsError = { message: 'sync_sessions table not found' };
+    }
+
+    // If sessions table doesn't exist, return empty dashboard with helpful message
+    if (sessionsError && sessionsError.message && (
+      sessionsError.message.includes('sync_sessions') || 
+      sessionsError.message.includes('relationship') ||
+      sessionsError.message.includes('schema cache')
+    )) {
+      console.log('Dashboard tables not available, returning empty state');
+      return res.status(200).json({
+        sessions: [],
+        summary: {
+          totalSessions: 0,
+          totalEmailsProcessed: 0,
+          totalEventsExtracted: 0,
+          totalCost: 0,
+          averageCostPerEmail: 0,
+          successRate: 0,
+          last30Days: {
+            sessions: 0,
+            emails: 0,
+            events: 0,
+            cost: 0
+          },
+          providerBreakdown: {}
+        },
+        pagination: {
+          limit: limitNum,
+          offset: offsetNum,
+          hasMore: false
+        },
+        schemaUpdateRequired: true,
+        message: 'Dashboard tracking is not yet available. Please run the updated database schema to enable session tracking.'
+      });
+    }
 
     if (sessionsError) {
-      throw new Error(`Failed to fetch sync sessions: ${sessionsError.message}`);
+      throw new Error(`Failed to fetch sync sessions: ${sessionsError.message || 'Unknown error'}`);
     }
 
     // Fetch dashboard summary statistics
@@ -202,7 +247,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       pagination: {
         limit: limitNum,
         offset: offsetNum,
-        hasMore: (sessions?.length || 0) === limitNum
+        hasMore: sessions ? sessions.length === limitNum : false
       }
     });
 

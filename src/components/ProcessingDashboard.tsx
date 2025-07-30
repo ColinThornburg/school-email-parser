@@ -68,6 +68,8 @@ interface DashboardData {
     offset: number;
     hasMore: boolean;
   };
+  schemaUpdateRequired?: boolean;
+  message?: string;
 }
 
 interface Props {
@@ -189,6 +191,48 @@ export default function ProcessingDashboard({ user: propUser }: Props) {
   }
 
   if (!dashboardData) return null;
+
+  // Handle case where schema update is required
+  if (dashboardData.schemaUpdateRequired) {
+    return (
+      <div className="p-6">
+        <Card className="border-blue-200 bg-blue-50">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-blue-800">
+              📊 Dashboard Setup Required
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <p className="text-blue-700">
+                {dashboardData.message || 'Processing dashboard is not yet available.'}
+              </p>
+              <div className="bg-white border border-blue-200 rounded-lg p-4">
+                <h4 className="font-medium text-blue-800 mb-2">To enable dashboard tracking:</h4>
+                <ol className="list-decimal list-inside space-y-1 text-sm text-blue-700">
+                  <li>Go to your Supabase SQL Editor</li>
+                  <li>Run the updated <code className="bg-blue-100 px-1 rounded">supabase-schema.sql</code> file</li>
+                  <li>This will create the new dashboard tracking tables</li>
+                  <li>Future syncs will populate the dashboard with detailed tracking data</li>
+                </ol>
+              </div>
+              <div className="flex gap-2">
+                <Button onClick={() => loadDashboardData(0)} variant="outline">
+                  Check Again
+                </Button>
+                <Button 
+                  onClick={() => window.open('https://app.supabase.com', '_blank')} 
+                  variant="default"
+                >
+                  Open Supabase
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   const { sessions, summary } = dashboardData;
 
