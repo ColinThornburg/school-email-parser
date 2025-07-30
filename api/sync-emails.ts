@@ -1608,34 +1608,64 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         console.log(`Processing stats:`, llmResults.processingStats);
         console.log(`Total cost: $${llmResults.processingStats.totalCost.toFixed(4)}`);
 
-        // Store processing history for each cost tracking entry (only if sessionId exists)
-        if (sessionId) {
-          for (const cost of llmResults.costTracking) {
+        // Store processing history for each cost tracking entry
+        console.log('Storing processing history...');
+        for (const cost of llmResults.costTracking) {
+          try {
+            await supabase
+              .from('processing_history')
+              .insert({
+                user_id: userId,
+                session_id: sessionId, // Can be null - that's okay now
+                email_id: null, // Batch processing doesn't map to individual emails
+                llm_provider: cost.provider,
+                model_name: cost.model,
+                processing_step: cost.provider === 'gemini' ? 
+                  (cost.model.includes('flash') ? 'classification' : 'fallback') : 
+                  'extraction',
+                processing_time: Math.round(totalLLMTime / llmResults.costTracking.length), // Distribute time
+                input_tokens: cost.inputTokens,
+                output_tokens: cost.outputTokens,
+                cost: cost.cost,
+                success_status: true,
+                retry_count: 0
+              });
+            console.log(`Stored processing history: ${cost.provider} ${cost.model} - ${cost.cost.toFixed(4)}`);
+          } catch (historyError) {
+            console.warn('Failed to store processing history:', historyError);
+          }
+        }
+
+        // Store detailed email processing history
+        console.log('Storing email-level processing history...');
+        for (const [emailKey, events] of Object.entries(llmResults.results)) {
+          const emailIndex = parseInt(emailKey.replace('email-', ''));
+          const metadata = emailMetadata[emailIndex];
+          
+          if (metadata) {
             try {
               await supabase
                 .from('processing_history')
                 .insert({
                   user_id: userId,
-                  session_id: sessionId,
-                  email_id: null, // Batch processing doesn't map to individual emails
-                  llm_provider: cost.provider,
-                  model_name: cost.model,
-                  processing_step: cost.provider === 'gemini' ? 
-                    (cost.model.includes('flash') ? 'classification' : 'fallback') : 
-                    'extraction',
-                  processing_time: Math.round(totalLLMTime / llmResults.costTracking.length), // Distribute time
-                  input_tokens: cost.inputTokens,
-                  output_tokens: cost.outputTokens,
-                  cost: cost.cost,
-                  success_status: true,
+                  session_id: sessionId, // Can be null
+                  email_id: metadata.processedEmailId,
+                  llm_provider: 'email_processing',
+                  model_name: 'orchestrator',
+                  processing_step: 'email_analysis',
+                  processing_time: Math.round(totalLLMTime / emailContentsToProcess.length),
+                  input_tokens: 0, // Will be summed from LLM calls above
+                  output_tokens: events.length, // Number of events extracted
+                  cost: 0, // Cost is tracked at LLM level
+                  success_status: events.length >= 0, // Success if no errors
+                  confidence_score: events.length > 0 ? events.reduce((sum, e) => sum + e.confidence, 0) / events.length : null,
                   retry_count: 0
                 });
+              console.log(`Stored email processing: ${emailContentsToProcess[emailIndex]?.subject} -> ${events.length} events`);
             } catch (historyError) {
-              console.warn('Failed to store processing history:', historyError);
+              console.warn(`Failed to store email processing history for ${metadata.messageId}:`, historyError);
             }
           }
-        } else {
-          console.log('Skipping processing history storage - session tracking not available');
         }
 
         // Process and store extracted events

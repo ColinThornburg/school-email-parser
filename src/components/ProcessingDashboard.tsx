@@ -69,6 +69,7 @@ interface DashboardData {
     hasMore: boolean;
   };
   schemaUpdateRequired?: boolean;
+  partialDataMode?: boolean;
   message?: string;
 }
 
@@ -156,6 +157,8 @@ export default function ProcessingDashboard({ user: propUser }: Props) {
       case 'extraction': return 'bg-green-100 text-green-800';
       case 'fallback': return 'bg-yellow-100 text-yellow-800';
       case 'email_retrieval': return 'bg-purple-100 text-purple-800';
+      case 'email_analysis': return 'bg-indigo-100 text-indigo-800';
+      case 'processed': return 'bg-emerald-100 text-emerald-800';
       default: return 'bg-gray-100 text-gray-800';
     }
   };
@@ -239,11 +242,38 @@ export default function ProcessingDashboard({ user: propUser }: Props) {
   return (
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Processing Dashboard</h1>
+        <div>
+          <h1 className="text-2xl font-bold">Processing Dashboard</h1>
+          {dashboardData.partialDataMode && (
+            <p className="text-sm text-amber-600 mt-1">
+              ⚠️ Partial data mode - showing processing history without full session tracking
+            </p>
+          )}
+        </div>
         <Button onClick={() => loadDashboardData(0)} variant="outline">
           Refresh
         </Button>
       </div>
+
+      {/* Partial Data Mode Banner */}
+      {dashboardData.partialDataMode && (
+        <Card className="border-amber-200 bg-amber-50">
+          <CardContent className="p-4">
+            <div className="flex items-start gap-3">
+              <span className="text-amber-600 text-lg">⚠️</span>
+              <div>
+                <h4 className="font-medium text-amber-800 mb-1">Partial Data Mode</h4>
+                <p className="text-amber-700 text-sm mb-2">
+                  {dashboardData.message || 'Showing limited dashboard data.'}
+                </p>
+                <p className="text-amber-600 text-xs">
+                  ✅ Email processing details • ✅ LLM usage • ❌ Full session tracking • ❌ Advanced analytics
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -400,39 +430,87 @@ export default function ProcessingDashboard({ user: propUser }: Props) {
                   <div className="mt-4 border-t pt-4">
                     <h4 className="font-medium mb-3">Processing History</h4>
                     <div className="space-y-2">
-                      {session.processing_history?.map((item) => (
-                        <div key={item.id} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
-                          <div className="flex items-center gap-2">
-                            <span>{getProviderIcon(item.llm_provider)}</span>
-                            <span className="font-medium">{item.llm_provider}</span>
-                            {item.model_name && (
-                              <span className="text-gray-600">({item.model_name})</span>
-                            )}
-                            {item.processing_step && (
-                              <span className={`px-2 py-1 rounded text-xs ${getStepColor(item.processing_step)}`}>
-                                {item.processing_step}
-                              </span>
-                            )}
-                            {item.retry_count > 0 && (
-                              <span className="text-orange-600">
-                                {item.retry_count} retries
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-4 text-right">
-                            <div>
-                              <p>{item.total_tokens.toLocaleString()} tokens</p>
-                              <p className="text-gray-600">{formatDuration(item.processing_time)}</p>
-                            </div>
-                            <div>
-                              <p className="font-medium">{formatCurrency(item.cost)}</p>
-                              <p className={`text-xs ${item.success_status ? 'text-green-600' : 'text-red-600'}`}>
-                                {item.success_status ? 'Success' : 'Failed'}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      )) || (
+                      {session.processing_history?.length > 0 ? (
+                        <>
+                          {/* Email-level processing */}
+                          {session.processing_history
+                            .filter(item => item.llm_provider === 'email_processing')
+                            .map((item) => (
+                              <div key={item.id} className="p-3 bg-blue-50 border border-blue-200 rounded text-sm">
+                                <div className="flex items-start justify-between">
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <span>📧</span>
+                                      <span className="font-medium">Email Processed</span>
+                                      <span className={`px-2 py-1 rounded text-xs ${getStepColor(item.processing_step)}`}>
+                                        {item.processing_step || 'processed'}
+                                      </span>
+                                    </div>
+                                    {(item as any).processed_emails && (
+                                      <div className="text-gray-700 ml-6">
+                                        <p className="font-medium">"{(item as any).processed_emails.subject}"</p>
+                                        <p className="text-xs text-gray-600">
+                                          From: {(item as any).processed_emails.sender_email} | 
+                                          {new Date((item as any).processed_emails.sent_date).toLocaleDateString()}
+                                        </p>
+                                      </div>
+                                    )}
+                                    {item.confidence_score && (
+                                      <p className="text-xs text-gray-600 ml-6">
+                                        Avg confidence: {(item.confidence_score * 100).toFixed(1)}%
+                                      </p>
+                                    )}
+                                  </div>
+                                  <div className="text-right">
+                                    <p className="font-medium text-blue-700">
+                                      {item.output_tokens || 0} events extracted
+                                    </p>
+                                    <p className="text-xs text-gray-600">
+                                      {formatDuration(item.processing_time)}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+
+                          {/* LLM processing steps */}
+                          {session.processing_history
+                            .filter(item => item.llm_provider !== 'email_processing')
+                            .map((item) => (
+                              <div key={item.id} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
+                                <div className="flex items-center gap-2">
+                                  <span>{getProviderIcon(item.llm_provider)}</span>
+                                  <span className="font-medium">{item.llm_provider}</span>
+                                  {item.model_name && (
+                                    <span className="text-gray-600">({item.model_name})</span>
+                                  )}
+                                  {item.processing_step && (
+                                    <span className={`px-2 py-1 rounded text-xs ${getStepColor(item.processing_step)}`}>
+                                      {item.processing_step}
+                                    </span>
+                                  )}
+                                  {item.retry_count > 0 && (
+                                    <span className="text-orange-600">
+                                      {item.retry_count} retries
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-4 text-right">
+                                  <div>
+                                    <p>{item.total_tokens.toLocaleString()} tokens</p>
+                                    <p className="text-gray-600">{formatDuration(item.processing_time)}</p>
+                                  </div>
+                                  <div>
+                                    <p className="font-medium">{formatCurrency(item.cost)}</p>
+                                    <p className={`text-xs ${item.success_status ? 'text-green-600' : 'text-red-600'}`}>
+                                      {item.success_status ? 'Success' : 'Failed'}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                        </>
+                      ) : (
                         <p className="text-gray-500 text-sm">No processing history available</p>
                       )}
                     </div>

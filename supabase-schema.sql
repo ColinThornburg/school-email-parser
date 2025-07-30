@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS sync_sessions (
 CREATE TABLE IF NOT EXISTS processing_history (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-  session_id UUID REFERENCES sync_sessions(id) ON DELETE CASCADE,
+  session_id UUID REFERENCES sync_sessions(id) ON DELETE SET NULL,
   email_id UUID REFERENCES processed_emails(id) ON DELETE CASCADE,
   llm_provider VARCHAR(50) NOT NULL, -- 'openai', 'gemini', 'orchestrator'
   model_name VARCHAR(100), -- specific model used
@@ -91,13 +91,13 @@ CREATE TABLE IF NOT EXISTS processing_history (
 -- Add missing columns to existing processing_history table
 DO $$ 
 BEGIN
-    -- Add session_id column if it doesn't exist
+    -- Add session_id column if it doesn't exist (nullable for backward compatibility)
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns 
         WHERE table_name = 'processing_history' 
         AND column_name = 'session_id'
     ) THEN
-        ALTER TABLE processing_history ADD COLUMN session_id UUID REFERENCES sync_sessions(id) ON DELETE CASCADE;
+        ALTER TABLE processing_history ADD COLUMN session_id UUID REFERENCES sync_sessions(id) ON DELETE SET NULL;
     END IF;
 
     -- Add model_name column if it doesn't exist

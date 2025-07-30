@@ -125,13 +125,129 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       sessionsError = { message: 'sync_sessions table not found' };
     }
 
-    // If sessions table doesn't exist, return empty dashboard with helpful message
+    // If sessions table doesn't exist, try to get processing history directly
     if (sessionsError && sessionsError.message && (
       sessionsError.message.includes('sync_sessions') || 
       sessionsError.message.includes('relationship') ||
       sessionsError.message.includes('schema cache')
     )) {
-      console.log('Dashboard tables not available, returning empty state');
+      console.log('sync_sessions table not available, checking for processing_history...');
+      
+      try {
+        // Try to get processing history directly (without session grouping)
+        const { data: processingHistory, error: historyError } = await supabase
+          .from('processing_history')
+          .select(`
+            *,
+            processed_emails!left (
+              subject,
+              sender_email,
+              sent_date
+            )
+          `)
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(50); // Get recent history
+
+        if (historyError) {
+          console.warn('processing_history also not available:', historyError);
+          return res.status(200).json({
+            sessions: [],
+            summary: {
+              totalSessions: 0,
+              totalEmailsProcessed: 0,
+              totalEventsExtracted: 0,
+              totalCost: 0,
+              averageCostPerEmail: 0,
+              successRate: 0,
+              last30Days: {
+                sessions: 0,
+                emails: 0,
+                events: 0,
+                cost: 0
+              },
+              providerBreakdown: {}
+            },
+            pagination: {
+              limit: limitNum,
+              offset: offsetNum,
+              hasMore: false
+            },
+            schemaUpdateRequired: true,
+            message: 'Dashboard tracking is not yet available. Please run the updated database schema to enable full tracking.'
+          });
+        }
+
+        // Build a synthetic session from processing history
+        if (processingHistory && processingHistory.length > 0) {
+          console.log(`Found ${processingHistory.length} processing history entries without sessions`);
+          
+          // Group by date for pseudo-sessions
+          const historyByDate: { [key: string]: any[] } = {};
+          processingHistory.forEach(item => {
+            const date = new Date(item.created_at).toDateString();
+            if (!historyByDate[date]) historyByDate[date] = [];
+            historyByDate[date].push(item);
+          });
+
+          const syntheticSessions = Object.entries(historyByDate).map(([date, items]) => {
+            const emailProcessingItems = items.filter(item => item.llm_provider === 'email_processing');
+            const llmProcessingItems = items.filter(item => item.llm_provider !== 'email_processing');
+            
+            return {
+              id: `synthetic-${date}`,
+              session_type: 'sync',
+              lookback_days: 7,
+              processing_mode: 'single',
+              total_emails_processed: emailProcessingItems.length,
+              total_events_extracted: emailProcessingItems.reduce((sum, item) => sum + (item.output_tokens || 0), 0),
+              total_cost: items.reduce((sum, item) => sum + parseFloat(item.cost || '0'), 0),
+              duplicates_removed: 0,
+              skipped_duplicate_emails: 0,
+              skipped_duplicate_events: 0,
+              started_at: items[items.length - 1].created_at, // Oldest
+              completed_at: items[0].created_at, // Newest
+              success_status: items.every(item => item.success_status),
+              error_message: null,
+              processing_history: items
+            };
+          });
+
+          const totalCost = processingHistory.reduce((sum, item) => sum + parseFloat(item.cost || '0'), 0);
+          const emailItems = processingHistory.filter(item => item.llm_provider === 'email_processing');
+
+          return res.status(200).json({
+            sessions: syntheticSessions.slice(0, limitNum),
+            summary: {
+              totalSessions: syntheticSessions.length,
+              totalEmailsProcessed: emailItems.length,
+              totalEventsExtracted: emailItems.reduce((sum, item) => sum + (item.output_tokens || 0), 0),
+              totalCost: totalCost,
+              averageCostPerEmail: emailItems.length > 0 ? totalCost / emailItems.length : 0,
+              successRate: processingHistory.length > 0 ? processingHistory.filter(item => item.success_status).length / processingHistory.length : 0,
+              last30Days: {
+                sessions: syntheticSessions.length,
+                emails: emailItems.length,
+                events: emailItems.reduce((sum, item) => sum + (item.output_tokens || 0), 0),
+                cost: totalCost
+              },
+              providerBreakdown: {}
+            },
+            pagination: {
+              limit: limitNum,
+              offset: offsetNum,
+              hasMore: syntheticSessions.length > limitNum
+            },
+            partialDataMode: true,
+            message: 'Showing processing history without full session tracking. Run the updated database schema for complete dashboard features.'
+          });
+        }
+      } catch (fallbackError) {
+        console.warn('Failed to get processing history fallback:', fallbackError);
+      }
+
+      // Complete fallback - no data available
+      console.log('No processing data available, returning setup message');
       return res.status(200).json({
         sessions: [],
         summary: {
