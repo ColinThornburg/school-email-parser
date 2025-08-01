@@ -88,166 +88,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const limitNum = parseInt(limit as string) || 10;
     const offsetNum = parseInt(offset as string) || 0;
 
-    // Fetch sync sessions with processing history (with fallback for missing schema)
-    let sessions: any[] | null = null;
+    // Fetch comprehensive processing data from enhanced processed_emails table
+    let emailSessions: any[] | null = null;
     let sessionsError: any = null;
     
     try {
+      // Get processed emails with extracted events for comprehensive dashboard
       const result = await supabase
-        .from('sync_sessions')
+        .from('processed_emails')
         .select(`
           *,
-          processing_history (
-            id,
-            llm_provider,
-            model_name,
-            processing_step,
-            processing_time,
-            input_tokens,
-            output_tokens,
-            total_tokens,
-            cost,
-            success_status,
+          extracted_dates (
+            event_title,
+            event_date,
+            event_time,
             confidence_score,
-            retry_count,
-            error_message,
-            created_at
+            description
           )
         `)
         .eq('user_id', userId)
-        .order('started_at', { ascending: false })
+        .order('processed_at', { ascending: false })
         .range(offsetNum, offsetNum + limitNum - 1);
 
-      sessions = result.data;
+      emailSessions = result.data;
       sessionsError = result.error;
+      
+      console.log(`Fetched ${emailSessions?.length || 0} processed emails for dashboard`);
     } catch (error) {
-      console.warn('Sync sessions table not available:', error);
-      sessionsError = { message: 'sync_sessions table not found' };
+      console.error('Error fetching processed emails:', error);
+      sessionsError = error;
     }
 
-    // If sessions table doesn't exist, try to get processing history directly
-    if (sessionsError && sessionsError.message && (
-      sessionsError.message.includes('sync_sessions') || 
-      sessionsError.message.includes('relationship') ||
-      sessionsError.message.includes('schema cache')
-    )) {
-      console.log('sync_sessions table not available, checking for processing_history...');
-      
-      try {
-        // Try to get processing history directly (without session grouping)
-        const { data: processingHistory, error: historyError } = await supabase
-          .from('processing_history')
-          .select(`
-            *,
-            processed_emails!left (
-              subject,
-              sender_email,
-              sent_date
-            )
-          `)
-          .eq('user_id', userId)
-          .order('created_at', { ascending: false })
-          .limit(50); // Get recent history
-
-        if (historyError) {
-          console.warn('processing_history also not available:', historyError);
-          return res.status(200).json({
-            sessions: [],
-            summary: {
-              totalSessions: 0,
-              totalEmailsProcessed: 0,
-              totalEventsExtracted: 0,
-              totalCost: 0,
-              averageCostPerEmail: 0,
-              successRate: 0,
-              last30Days: {
-                sessions: 0,
-                emails: 0,
-                events: 0,
-                cost: 0
-              },
-              providerBreakdown: {}
-            },
-            pagination: {
-              limit: limitNum,
-              offset: offsetNum,
-              hasMore: false
-            },
-            schemaUpdateRequired: true,
-            message: 'Dashboard tracking is not yet available. Please run the updated database schema to enable full tracking.'
-          });
-        }
-
-        // Build a synthetic session from processing history
-        if (processingHistory && processingHistory.length > 0) {
-          console.log(`Found ${processingHistory.length} processing history entries without sessions`);
-          
-          // Group by date for pseudo-sessions
-          const historyByDate: { [key: string]: any[] } = {};
-          processingHistory.forEach(item => {
-            const date = new Date(item.created_at).toDateString();
-            if (!historyByDate[date]) historyByDate[date] = [];
-            historyByDate[date].push(item);
-          });
-
-          const syntheticSessions = Object.entries(historyByDate).map(([date, items]) => {
-            const emailProcessingItems = items.filter(item => item.llm_provider === 'email_processing');
-            const llmProcessingItems = items.filter(item => item.llm_provider !== 'email_processing');
-            
-            return {
-              id: `synthetic-${date}`,
-              session_type: 'sync',
-              lookback_days: 7,
-              processing_mode: 'single',
-              total_emails_processed: emailProcessingItems.length,
-              total_events_extracted: emailProcessingItems.reduce((sum, item) => sum + (item.output_tokens || 0), 0),
-              total_cost: items.reduce((sum, item) => sum + parseFloat(item.cost || '0'), 0),
-              duplicates_removed: 0,
-              skipped_duplicate_emails: 0,
-              skipped_duplicate_events: 0,
-              started_at: items[items.length - 1].created_at, // Oldest
-              completed_at: items[0].created_at, // Newest
-              success_status: items.every(item => item.success_status),
-              error_message: null,
-              processing_history: items
-            };
-          });
-
-          const totalCost = processingHistory.reduce((sum, item) => sum + parseFloat(item.cost || '0'), 0);
-          const emailItems = processingHistory.filter(item => item.llm_provider === 'email_processing');
-
-          return res.status(200).json({
-            sessions: syntheticSessions.slice(0, limitNum),
-            summary: {
-              totalSessions: syntheticSessions.length,
-              totalEmailsProcessed: emailItems.length,
-              totalEventsExtracted: emailItems.reduce((sum, item) => sum + (item.output_tokens || 0), 0),
-              totalCost: totalCost,
-              averageCostPerEmail: emailItems.length > 0 ? totalCost / emailItems.length : 0,
-              successRate: processingHistory.length > 0 ? processingHistory.filter(item => item.success_status).length / processingHistory.length : 0,
-              last30Days: {
-                sessions: syntheticSessions.length,
-                emails: emailItems.length,
-                events: emailItems.reduce((sum, item) => sum + (item.output_tokens || 0), 0),
-                cost: totalCost
-              },
-              providerBreakdown: {}
-            },
-            pagination: {
-              limit: limitNum,
-              offset: offsetNum,
-              hasMore: syntheticSessions.length > limitNum
-            },
-            partialDataMode: true,
-            message: 'Showing processing history without full session tracking. Run the updated database schema for complete dashboard features.'
-          });
-        }
-      } catch (fallbackError) {
-        console.warn('Failed to get processing history fallback:', fallbackError);
-      }
-
-      // Complete fallback - no data available
-      console.log('No processing data available, returning setup message');
+    // Transform processed emails into dashboard format
+    if (sessionsError || !emailSessions) {
+      console.error('Failed to fetch processed emails:', sessionsError);
       return res.status(200).json({
         sessions: [],
         summary: {
@@ -270,101 +144,124 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           offset: offsetNum,
           hasMore: false
         },
-        schemaUpdateRequired: true,
-        message: 'Dashboard tracking is not yet available. Please run the updated database schema to enable session tracking.'
+        useEnhancedEmails: true,
+        message: 'Unable to fetch processing data. The processed_emails table may need additional columns.'
       });
     }
 
-    if (sessionsError) {
-      throw new Error(`Failed to fetch sync sessions: ${sessionsError.message || 'Unknown error'}`);
-    }
+    // Transform processed emails into session-like format for dashboard
+    const emailBasedSessions = emailSessions.map(email => ({
+      id: email.id,
+      session_type: 'email_processing',
+      email_data: {
+        subject: email.subject,
+        sender_email: email.sender_email,
+        sent_date: email.sent_date,
+        body_preview: email.email_body_preview,
+        processing_status: email.processing_status,
+        processing_started_at: email.processing_started_at,
+        processing_completed_at: email.processing_completed_at,
+        events_extracted_count: email.events_extracted_count || 0,
+        average_confidence_score: email.average_confidence_score,
+        processing_cost: email.processing_cost || 0,
+        total_tokens_used: email.total_tokens_used || 0,
+        llm_providers_used: email.llm_providers_used,
+        models_used: email.models_used,
+        processing_time_ms: email.processing_time_ms || 0,
+        had_date_content: email.had_date_content,
+        classification_passed: email.classification_passed,
+        extraction_successful: email.extraction_successful,
+        processing_error_message: email.processing_error_message,
+        has_attachments: email.has_attachments
+      },
+      extracted_events: email.extracted_dates || [],
+      // Map to session-like fields for compatibility
+      started_at: email.processing_started_at || email.processed_at,
+      completed_at: email.processing_completed_at || email.processed_at,
+      success_status: email.extraction_successful !== false,
+      total_emails_processed: 1,
+      total_events_extracted: email.events_extracted_count || 0,
+      total_cost: email.processing_cost || 0
+    }));
 
-    // Fetch dashboard summary statistics
+    // Calculate dashboard summary from processed emails
+    console.log('Calculating summary statistics from processed emails...');
+    
+    // Get all processed emails for summary calculation
+    const { data: allProcessedEmails } = await supabase
+      .from('processed_emails')
+      .select('*')
+      .eq('user_id', userId);
+
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    // Get overall statistics
-    const { data: summaryStats, error: summaryError } = await supabase
-      .rpc('get_dashboard_summary', { p_user_id: userId });
+    const recentEmails = allProcessedEmails?.filter(email => 
+      new Date(email.processed_at) >= thirtyDaysAgo) || [];
 
-    let dashboardSummary: DashboardSummary;
+    // Calculate totals
+    const totalEmails = allProcessedEmails?.length || 0;
+    const totalEvents = allProcessedEmails?.reduce((sum, email) => sum + (email.events_extracted_count || 0), 0) || 0;
+    const totalCost = allProcessedEmails?.reduce((sum, email) => sum + parseFloat(email.processing_cost || '0'), 0) || 0;
+    const successfulEmails = allProcessedEmails?.filter(email => email.extraction_successful !== false).length || 0;
 
-    if (summaryError || !summaryStats) {
-      // Fallback to manual calculation if RPC doesn't exist
-      console.log('RPC not available, calculating summary manually');
-      
-      const { data: allSessions } = await supabase
-        .from('sync_sessions')
-        .select('*')
-        .eq('user_id', userId);
+    // Create provider breakdown from processed emails
+    const providerBreakdown: { [key: string]: any } = {};
+    allProcessedEmails?.forEach(email => {
+      if (email.llm_providers_used) {
+        const providers = email.llm_providers_used.split(', ');
+        providers.forEach(provider => {
+          if (!providerBreakdown[provider]) {
+            providerBreakdown[provider] = {
+              usage: 0,
+              cost: 0,
+              successRate: 0,
+              count: 0
+            };
+          }
+          providerBreakdown[provider].usage += email.total_tokens_used || 0;
+          providerBreakdown[provider].cost += parseFloat(email.processing_cost || '0');
+          providerBreakdown[provider].count++;
+        });
+      }
+    });
 
-      const { data: allProcessingHistory } = await supabase
-        .from('processing_history')
-        .select('*')
-        .eq('user_id', userId);
+    // Calculate success rates for providers
+    Object.keys(providerBreakdown).forEach(provider => {
+      const successCount = allProcessedEmails?.filter(email => 
+        email.llm_providers_used?.includes(provider) && email.extraction_successful !== false
+      ).length || 0;
+      providerBreakdown[provider].successRate = providerBreakdown[provider].count > 0 ? 
+        successCount / providerBreakdown[provider].count : 0;
+    });
 
-      const recentSessions = allSessions?.filter(s => 
-        new Date(s.started_at) >= thirtyDaysAgo) || [];
+    const dashboardSummary: DashboardSummary = {
+      totalSessions: totalEmails, // Using emails as "sessions"
+      totalEmailsProcessed: totalEmails,
+      totalEventsExtracted: totalEvents,
+      totalCost: totalCost,
+      averageCostPerEmail: totalEmails > 0 ? totalCost / totalEmails : 0,
+      successRate: totalEmails > 0 ? successfulEmails / totalEmails : 0,
+      last30Days: {
+        sessions: recentEmails.length,
+        emails: recentEmails.length,
+        events: recentEmails.reduce((sum, email) => sum + (email.events_extracted_count || 0), 0),
+        cost: recentEmails.reduce((sum, email) => sum + parseFloat(email.processing_cost || '0'), 0)
+      },
+      providerBreakdown
+    };
 
-      const providerBreakdown: { [key: string]: any } = {};
-      
-      allProcessingHistory?.forEach(item => {
-        if (!providerBreakdown[item.llm_provider]) {
-          providerBreakdown[item.llm_provider] = {
-            usage: 0,
-            cost: 0,
-            successCount: 0,
-            totalCount: 0
-          };
-        }
-        providerBreakdown[item.llm_provider].usage += item.total_tokens || 0;
-        providerBreakdown[item.llm_provider].cost += parseFloat(item.cost || '0');
-        providerBreakdown[item.llm_provider].totalCount++;
-        if (item.success_status) {
-          providerBreakdown[item.llm_provider].successCount++;
-        }
-      });
-
-      // Calculate success rates
-      Object.keys(providerBreakdown).forEach(provider => {
-        const data = providerBreakdown[provider];
-        data.successRate = data.totalCount > 0 ? data.successCount / data.totalCount : 0;
-        delete data.successCount;
-        delete data.totalCount;
-      });
-
-      const totalEmails = allSessions?.reduce((sum, s) => sum + (s.total_emails_processed || 0), 0) || 0;
-      const totalCost = allSessions?.reduce((sum, s) => sum + parseFloat(s.total_cost || '0'), 0) || 0;
-
-      dashboardSummary = {
-        totalSessions: allSessions?.length || 0,
-        totalEmailsProcessed: totalEmails,
-        totalEventsExtracted: allSessions?.reduce((sum, s) => sum + (s.total_events_extracted || 0), 0) || 0,
-        totalCost: totalCost,
-        averageCostPerEmail: totalEmails > 0 ? totalCost / totalEmails : 0,
-        successRate: allSessions && allSessions.length > 0 ? 
-          allSessions.filter(s => s.success_status).length / allSessions.length : 0,
-        last30Days: {
-          sessions: recentSessions.length,
-          emails: recentSessions.reduce((sum, s) => sum + (s.total_emails_processed || 0), 0),
-          events: recentSessions.reduce((sum, s) => sum + (s.total_events_extracted || 0), 0),
-          cost: recentSessions.reduce((sum, s) => sum + parseFloat(s.total_cost || '0'), 0)
-        },
-        providerBreakdown
-      };
-    } else {
-      dashboardSummary = summaryStats[0];
-    }
-
-    // Return the dashboard data
+    // Return the enhanced dashboard data
     res.status(200).json({
-      sessions: sessions || [],
+      sessions: emailBasedSessions,
       summary: dashboardSummary,
       pagination: {
         limit: limitNum,
         offset: offsetNum,
-        hasMore: sessions ? sessions.length === limitNum : false
-      }
+        hasMore: emailBasedSessions.length === limitNum
+      },
+      useEnhancedEmails: true,
+      message: 'Showing comprehensive email processing data with full details for each processed email.'
     });
 
   } catch (error) {

@@ -1682,7 +1682,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
 
         console.log(`Email ${messageRef.id} is new, storing in database...`);
-        // Store processed email (or update if force reprocessing)
+        // Store processed email (or update if force reprocessing) with initial processing info
         const { data: processedEmail, error: emailError } = await supabase
           .from('processed_emails')
           .upsert({
@@ -1693,7 +1693,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             sent_date: new Date(date).toISOString(),
             content_hash: contentHash,
             has_attachments: message.payload.parts?.some((part: any) => part.filename) || false,
-            processed_at: new Date().toISOString()
+            processed_at: new Date().toISOString(),
+            // Add processing tracking fields
+            processing_status: 'retrieved',
+            processing_started_at: new Date().toISOString(),
+            email_body_preview: body.substring(0, 500), // Store preview for dashboard
+            session_id: sessionId
           }, {
             onConflict: 'gmail_message_id'
           })
@@ -1777,7 +1782,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         console.log('Storing processing history...');
         for (const cost of llmResults.costTracking) {
           try {
-            await supabase
+            console.log(`Attempting to store processing history for ${cost.provider} ${cost.model}`);
+            const { data: historyData, error: historyError } = await supabase
               .from('processing_history')
               .insert({
                 user_id: userId,
@@ -1794,10 +1800,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 cost: cost.cost,
                 success_status: true,
                 retry_count: 0
-              });
-            console.log(`Stored processing history: ${cost.provider} ${cost.model} - ${cost.cost.toFixed(4)}`);
+              })
+              .select();
+            
+            if (historyError) {
+              console.error('Failed to store processing history:', historyError);
+              console.error('Processing history table might not exist or have wrong schema');
+            } else {
+              console.log(`✅ Successfully stored processing history: ${cost.provider} ${cost.model} - $${cost.cost.toFixed(4)}`);
+            }
           } catch (historyError) {
-            console.warn('Failed to store processing history:', historyError);
+            console.error('Exception storing processing history:', historyError);
           }
         }
 
@@ -1809,7 +1822,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           
           if (metadata) {
             try {
-              await supabase
+              console.log(`Attempting to store email processing history for: ${emailContentsToProcess[emailIndex]?.subject}`);
+              const { data: emailHistoryData, error: emailHistoryError } = await supabase
                 .from('processing_history')
                 .insert({
                   user_id: userId,
@@ -1825,25 +1839,74 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                   success_status: events.length >= 0, // Success if no errors
                   confidence_score: events.length > 0 ? events.reduce((sum, e) => sum + e.confidence, 0) / events.length : null,
                   retry_count: 0
+                })
+                .select();
+              
+              if (emailHistoryError) {
+                console.error(`❌ Failed to store email processing history:`, emailHistoryError);
+                console.error('Email details:', {
+                  subject: emailContentsToProcess[emailIndex]?.subject,
+                  messageId: metadata.messageId
                 });
-              console.log(`Stored email processing: ${emailContentsToProcess[emailIndex]?.subject} -> ${events.length} events`);
+              } else {
+                console.log(`✅ Stored email processing: ${emailContentsToProcess[emailIndex]?.subject} -> ${events.length} events`);
+              }
             } catch (historyError) {
-              console.warn(`Failed to store email processing history for ${metadata.messageId}:`, historyError);
+              console.error(`Exception storing email processing history for ${metadata.messageId}:`, historyError);
             }
           }
         }
 
-        // Process and store extracted events
+        // Update processed emails with comprehensive processing results and store extracted events
+        console.log('Updating emails with processing results and storing events...');
         for (const [emailKey, events] of Object.entries(llmResults.results)) {
           const emailIndex = parseInt(emailKey.replace('email-', ''));
           const metadata = emailMetadata[emailIndex];
+          const emailContent = emailContentsToProcess[emailIndex];
           
-          if (!metadata) {
-            console.error(`No metadata found for email index ${emailIndex}`);
+          if (!metadata || !emailContent) {
+            console.error(`No metadata or content found for email index ${emailIndex}`);
             continue;
           }
 
-          console.log(`Processing ${events.length} events for email ${metadata.messageId}`);
+          console.log(`Processing ${events.length} events for email: "${emailContent.subject}"`);
+          
+          // Calculate processing stats for this email
+          const avgConfidence = events.length > 0 ? events.reduce((sum, e) => sum + e.confidence, 0) / events.length : null;
+          const emailCosts = llmResults.costTracking.filter(cost => 
+            cost.provider === 'openai' || cost.provider === 'gemini'
+          );
+          const totalEmailCost = emailCosts.reduce((sum, cost) => sum + cost.cost, 0) / emailContentsToProcess.length;
+          const totalTokens = emailCosts.reduce((sum, cost) => sum + cost.inputTokens + cost.outputTokens, 0) / emailContentsToProcess.length;
+          
+          // Update the processed email with comprehensive processing information
+          try {
+            const { error: updateError } = await supabase
+              .from('processed_emails')
+              .update({
+                processing_status: 'completed',
+                processing_completed_at: new Date().toISOString(),
+                events_extracted_count: events.length,
+                average_confidence_score: avgConfidence,
+                processing_cost: totalEmailCost,
+                total_tokens_used: Math.round(totalTokens),
+                llm_providers_used: [...new Set(emailCosts.map(c => c.provider))].join(', '),
+                models_used: [...new Set(emailCosts.map(c => c.model))].join(', '),
+                processing_time_ms: Math.round(totalLLMTime / emailContentsToProcess.length),
+                had_date_content: events.length > 0,
+                classification_passed: true, // If we got here, classification passed
+                extraction_successful: true
+              })
+              .eq('id', metadata.processedEmailId);
+              
+            if (updateError) {
+              console.error(`Failed to update processing info for email ${emailContent.subject}:`, updateError);
+            } else {
+              console.log(`✅ Updated processing info for: "${emailContent.subject}"`);
+            }
+          } catch (updateError) {
+            console.error(`Exception updating email processing info:`, updateError);
+          }
 
           for (const event of events) {
             // Normalize the time value before checking existence and storing
@@ -1907,6 +1970,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       } catch (error) {
         console.error('LLM processing error:', error);
+        
+        // Update all processed emails to show processing failed
+        console.log('Updating emails with processing failure status...');
+        try {
+          const emailIds = emailMetadata.map(m => m.processedEmailId);
+          const { error: updateError } = await supabase
+            .from('processed_emails')
+            .update({
+              processing_status: 'failed',
+              processing_completed_at: new Date().toISOString(),
+              events_extracted_count: 0,
+              extraction_successful: false,
+              processing_error_message: error instanceof Error ? error.message : 'Unknown LLM processing error'
+            })
+            .in('id', emailIds);
+            
+          if (updateError) {
+            console.error('Failed to update emails with failure status:', updateError);
+          } else {
+            console.log(`Updated ${emailIds.length} emails with failure status`);
+          }
+        } catch (updateError) {
+          console.error('Exception updating emails with failure status:', updateError);
+        }
         
         // Store failed processing history
         try {
