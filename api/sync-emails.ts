@@ -230,6 +230,7 @@ class OpenAIService {
         }
 
         console.log('OpenAI response received, parsing...');
+        console.log('OpenAI raw response (first 500 chars):', content.substring(0, 500));
         
         let parsedData;
         try {
@@ -237,8 +238,19 @@ class OpenAIService {
           const events = parsedData.events || [];
           return this.validateAndNormalizeResponse(events, emailContent.sentDate);
         } catch (parseError) {
-          console.error('JSON parsing failed. Raw content:', content);
-          throw new Error(`Invalid JSON response from OpenAI: ${parseError instanceof Error ? parseError.message : 'Unknown parsing error'}`);
+          console.error('OpenAI JSON parsing failed. Raw content:', content.substring(0, 1000));
+          console.error('Parse error:', parseError);
+          
+          // Try basic cleanup similar to Gemini approach
+          try {
+            const cleanedContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+            const retryParsed = JSON.parse(cleanedContent);
+            const events = retryParsed.events || [];
+            console.log('OpenAI JSON parsing succeeded after cleanup');
+            return this.validateAndNormalizeResponse(events, emailContent.sentDate);
+          } catch (retryError) {
+            throw new Error(`Invalid JSON response from OpenAI: ${parseError instanceof Error ? parseError.message : 'Unknown parsing error'}`);
+          }
         }
       }, 3, 1000, 'OpenAI');
 
@@ -956,17 +968,21 @@ class GeminiService {
         }
 
         // Parse classification response with robust JSON cleaning
-        let cleanedContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+        console.log('Raw Gemini response (first 500 chars):', content.substring(0, 500));
         
-        // Additional JSON sanitization for common Gemini issues
-        cleanedContent = cleanedContent.replace(/[\r\n\t]/g, ' '); // Remove newlines/tabs
-        cleanedContent = cleanedContent.replace(/\s+/g, ' '); // Normalize whitespace
-        cleanedContent = cleanedContent.replace(/,\s*}/, '}'); // Remove trailing commas
-        cleanedContent = cleanedContent.replace(/,\s*]/, ']'); // Remove trailing commas in arrays
-        
-        console.log('Attempting to parse Gemini JSON:', cleanedContent.substring(0, 200) + '...');
-        
-        const classification = JSON.parse(cleanedContent);
+        let classification;
+        try {
+          classification = this.parseGeminiJSON(content);
+        } catch (parseError) {
+          console.error('All JSON parsing attempts failed:', parseError);
+          // If JSON parsing completely fails, try to extract boolean from text content
+          const hasDateKeywords = /true|yes|contains|found|date|time|event|deadline/i.test(content);
+          return {
+            hasDateContent: hasDateKeywords,
+            confidence: 0.3,
+            reasoning: 'JSON parsing failed completely, used text analysis fallback'
+          };
+        }
         
         return {
           hasDateContent: classification.hasDateContent || false,
@@ -976,24 +992,13 @@ class GeminiService {
       }, 3, 1000, 'Gemini');
 
     } catch (error) {
-      console.error('Gemini classification error:', error);
-      
-      // If it's a JSON parsing error, try to extract boolean from text
-      if (error instanceof SyntaxError && content) {
-        console.log('Attempting text-based classification fallback...');
-        const hasDate = /true|yes|contains|found|date|time|event|deadline/i.test(content);
-        return {
-          hasDateContent: hasDate,
-          confidence: 0.3,
-          reasoning: 'JSON parsing failed, used text analysis fallback'
-        };
-      }
+      console.error('Gemini classification error after retries:', error);
       
       // Default to processing if classification fails completely
       return {
         hasDateContent: true,
         confidence: 0.5,
-        reasoning: 'Classification failed, defaulting to processing'
+        reasoning: 'Classification failed completely, defaulting to processing'
       };
     }
   }
@@ -1037,9 +1042,22 @@ class GeminiService {
           throw new Error('No response content from Gemini');
         }
 
-        // Parse extraction response
-        const cleanedContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-        const events = JSON.parse(cleanedContent);
+        // Parse extraction response using robust JSON parser
+        console.log('Raw Gemini extraction response (first 500 chars):', content.substring(0, 500));
+        const parsedResponse = this.parseGeminiJSON(content);
+        
+        // Handle different response formats - could be array directly or object with events property
+        let events = parsedResponse;
+        if (parsedResponse && typeof parsedResponse === 'object' && !Array.isArray(parsedResponse)) {
+          if (parsedResponse.events && Array.isArray(parsedResponse.events)) {
+            events = parsedResponse.events;
+          } else if (Array.isArray(parsedResponse)) {
+            events = parsedResponse;
+          } else {
+            // If it's an object but not an array and no events property, treat as empty
+            events = [];
+          }
+        }
         
         return this.validateAndNormalizeResponse(events, emailContent.sentDate);
       }, 3, 1000, 'Gemini Extraction');
@@ -1072,6 +1090,64 @@ class GeminiService {
     }
 
     return results;
+  }
+
+  // Robust JSON parser for Gemini responses
+  private parseGeminiJSON(content: string): any {
+    console.log('Attempting to parse Gemini JSON...');
+    
+    // Step 1: Remove markdown code blocks
+    let cleanedContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    
+    // Step 2: Basic cleanup
+    cleanedContent = cleanedContent.replace(/[\r\n\t]/g, ' '); // Remove newlines/tabs
+    cleanedContent = cleanedContent.replace(/\s+/g, ' '); // Normalize whitespace
+    cleanedContent = cleanedContent.replace(/,\s*}/, '}'); // Remove trailing commas in objects
+    cleanedContent = cleanedContent.replace(/,\s*]/, ']'); // Remove trailing commas in arrays
+    
+    // Step 3: Try to extract JSON object boundaries
+    const objectMatch = cleanedContent.match(/\{.*\}/);
+    if (objectMatch) {
+      cleanedContent = objectMatch[0];
+    }
+    
+    console.log('Cleaned content:', cleanedContent.substring(0, 200) + '...');
+    
+    // Step 4: Multiple parsing attempts with different repair strategies
+    const repairStrategies = [
+      // Strategy 1: Try as-is
+      cleanedContent,
+      
+      // Strategy 2: Fix unterminated strings by closing them
+      cleanedContent.replace(/"[^"]*$/, '""'),
+      
+      // Strategy 3: Fix unterminated strings and ensure proper object closure
+      cleanedContent.replace(/"[^"]*$/, '""').replace(/[^}]*$/, '}'),
+      
+      // Strategy 4: Extract and reconstruct basic structure
+      cleanedContent.replace(/^[^{]*/, '').replace(/[^}]*$/, ''),
+      
+      // Strategy 5: If all else fails, try to build a minimal valid JSON
+      '{"hasDateContent": true, "confidence": 0.5, "reasoning": "Parsing fallback"}'
+    ];
+    
+    for (let i = 0; i < repairStrategies.length; i++) {
+      const attempt = repairStrategies[i];
+      try {
+        const parsed = JSON.parse(attempt);
+        if (i > 0) {
+          console.log(`Successfully parsed JSON with repair strategy ${i + 1}:`, attempt.substring(0, 100));
+        } else {
+          console.log('Successfully parsed JSON without repairs');
+        }
+        return parsed;
+      } catch (error) {
+        console.log(`Repair strategy ${i + 1} failed:`, error instanceof Error ? error.message : 'Unknown error');
+        continue;
+      }
+    }
+    
+    throw new Error('All JSON parsing strategies failed');
   }
 
   private createClassificationPrompt(emailContent: EmailContent): string {
