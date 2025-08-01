@@ -200,7 +200,8 @@ async function eventExists(
   userId: string, 
   title: string, 
   date: string, 
-  time?: string | null
+  time?: string | null,
+  emailSubject?: string
 ): Promise<boolean> {
   const normalizedTime = normalizeTimeValue(time);
   
@@ -211,18 +212,27 @@ async function eventExists(
   
   const safeTime = validateTimeForDatabase(normalizedTime);
   
-  const { data, error } = await supabase
+  // Build query with proper null handling for Supabase
+  let query = supabase
     .from('extracted_dates')
     .select('id')
     .eq('user_id', userId)
     .eq('event_title', title.trim())
-    .eq('event_date', date)
-    .eq('event_time', safeTime)
-    .limit(1);
+    .eq('event_date', date);
+    
+  // Handle null time values explicitly for Supabase
+  if (safeTime === null || safeTime === undefined) {
+    query = query.is('event_time', null);
+  } else {
+    query = query.eq('event_time', safeTime);
+  }
+  
+  const { data, error } = await query.limit(1);
 
   if (error) {
     console.error('Error checking event existence:', error);
     console.error('Query parameters:', {
+      emailSubject: emailSubject || 'Unknown',
       userId,
       title: title.trim(),
       date,
@@ -1840,7 +1850,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             const normalizedTime = normalizeTimeValue(event.time);
             
             // Check if this exact event already exists for this user
-            const exists = await eventExists(supabase, userId, event.title, event.date, normalizedTime);
+            const emailSubject = emailContentsToProcess[emailIndex]?.subject || 'Unknown';
+            const exists = await eventExists(supabase, userId, event.title, event.date, normalizedTime, emailSubject);
             
             if (exists && !forceReprocess) {
               console.log(`Event "${event.title}" on ${event.date} already exists, skipping...`);
@@ -1853,19 +1864,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             
             const safeTime = validateTimeForDatabase(normalizedTime);
             
+            // Build upsert data with proper null handling
+            const upsertData = {
+              email_id: metadata.processedEmailId,
+              user_id: userId,
+              event_title: event.title,
+              event_date: event.date,
+              event_time: safeTime === null || safeTime === undefined ? null : safeTime,
+              description: event.description,
+              confidence_score: event.confidence,
+              is_verified: false,
+              extracted_at: new Date().toISOString()
+            };
+            
             const { data: extractedDate, error: dateError } = await supabase
               .from('extracted_dates')
-              .upsert({
-                email_id: metadata.processedEmailId,
-                user_id: userId,
-                event_title: event.title,
-                event_date: event.date,
-                event_time: safeTime,
-                description: event.description,
-                confidence_score: event.confidence,
-                is_verified: false,
-                extracted_at: new Date().toISOString()
-              }, {
+              .upsert(upsertData, {
                 onConflict: 'user_id,event_title,event_date,event_time',
                 ignoreDuplicates: !forceReprocess
               })
@@ -1877,6 +1891,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             } else if (dateError) {
               console.error('Error storing extracted date:', dateError);
               console.error('Failed event data:', {
+                emailSubject: emailContentsToProcess[emailIndex]?.subject || 'Unknown',
+                emailSender: emailContentsToProcess[emailIndex]?.senderEmail || 'Unknown',
                 title: event.title,
                 date: event.date,
                 originalTime: event.time,
