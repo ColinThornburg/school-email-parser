@@ -54,7 +54,8 @@ type ProcessingMode = 'single' | 'batch';
 
 // Helper function to create event hash for deduplication
 function createEventHash(userId: string, title: string, date: string, time?: string): string {
-  const eventKey = `${userId}:${title.toLowerCase().trim()}:${date}:${time || 'no-time'}`;
+  const normalizedTime = normalizeTimeValue(time);
+  const eventKey = `${userId}:${title.toLowerCase().trim()}:${date}:${normalizedTime || 'no-time'}`;
   return crypto.createHash('md5').update(eventKey).digest('hex');
 }
 
@@ -111,7 +112,8 @@ async function manualCleanupDuplicates(supabase: any, userId: string): Promise<n
 
   // Group events by their unique identifier
   for (const event of events) {
-    const eventKey = `${event.event_title.toLowerCase().trim()}:${event.event_date}:${event.event_time || 'no-time'}`;
+    const normalizedTime = normalizeTimeValue(event.event_time);
+    const eventKey = `${event.event_title.toLowerCase().trim()}:${event.event_date}:${normalizedTime || 'no-time'}`;
     
     if (eventMap.has(eventKey)) {
       // This is a duplicate, mark for deletion
@@ -139,21 +141,31 @@ async function manualCleanupDuplicates(supabase: any, userId: string): Promise<n
   return deletedCount;
 }
 
+// Helper function to normalize time value
+function normalizeTimeValue(time?: string | null): string | null {
+  if (!time || time === 'null' || time === 'undefined' || time.trim() === '') {
+    return null;
+  }
+  return time.trim();
+}
+
 // Helper function to check if event already exists
 async function eventExists(
   supabase: any, 
   userId: string, 
   title: string, 
   date: string, 
-  time?: string
+  time?: string | null
 ): Promise<boolean> {
+  const normalizedTime = normalizeTimeValue(time);
+  
   const { data, error } = await supabase
     .from('extracted_dates')
     .select('id')
     .eq('user_id', userId)
     .eq('event_title', title.trim())
     .eq('event_date', date)
-    .eq('event_time', time && time !== 'null' ? time : null)
+    .eq('event_time', normalizedTime)
     .limit(1);
 
   if (error) {
@@ -407,10 +419,13 @@ Return {"events": []} if no dates found.`;
       // Validate confidence score
       const confidence = Math.max(0, Math.min(1, event.confidence));
 
+      // Normalize time value
+      const normalizedTime = normalizeTimeValue(event.time);
+
       validEvents.push({
         title: String(event.title).trim(),
         date: event.date,
-        time: event.time || undefined,
+        time: normalizedTime || undefined,
         description: event.description ? String(event.description).trim() : '',
         confidence: confidence
       });
@@ -1132,10 +1147,13 @@ Return [] if no dates found.`;
 
       const confidence = Math.max(0, Math.min(1, event.confidence));
 
+      // Normalize time value
+      const normalizedTime = normalizeTimeValue(event.time);
+
       validEvents.push({
         title: String(event.title).trim(),
         date: event.date,
-        time: event.time || undefined,
+        time: normalizedTime || undefined,
         description: event.description ? String(event.description).trim() : '',
         confidence: confidence
       });
@@ -1681,8 +1699,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           console.log(`Processing ${events.length} events for email ${metadata.messageId}`);
 
           for (const event of events) {
+            // Normalize the time value before checking existence and storing
+            const normalizedTime = normalizeTimeValue(event.time);
+            
             // Check if this exact event already exists for this user
-            const exists = await eventExists(supabase, userId, event.title, event.date, event.time);
+            const exists = await eventExists(supabase, userId, event.title, event.date, normalizedTime);
             
             if (exists && !forceReprocess) {
               console.log(`Event "${event.title}" on ${event.date} already exists, skipping...`);
@@ -1698,7 +1719,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 user_id: userId,
                 event_title: event.title,
                 event_date: event.date,
-                event_time: event.time && event.time !== 'null' ? event.time : null,
+                event_time: normalizedTime,
                 description: event.description,
                 confidence_score: event.confidence,
                 is_verified: false,
