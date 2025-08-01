@@ -163,34 +163,6 @@ export default function ProcessingDashboard({ user: propUser }: Props) {
     }
   };
 
-  // Helper function to validate and normalize time values
-  function normalizeTimeValue(timeStr?: string): string | null {
-    if (!timeStr || timeStr === 'null' || timeStr === 'undefined' || timeStr.trim() === '') {
-      return null;
-    }
-    
-    // Remove quotes and trim
-    const cleaned = timeStr.replace(/['"]/g, '').trim();
-    
-    if (cleaned === 'null' || cleaned === 'undefined' || cleaned === '') {
-      return null;
-    }
-    
-    // Try to validate time format (HH:MM or HH:MM:SS)
-    const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9](?::[0-5][0-9])?$/;
-    
-    if (timeRegex.test(cleaned)) {
-      // Ensure HH:MM:SS format (add :00 if needed)
-      if (cleaned.length === 5) {
-        return cleaned + ':00';
-      }
-      return cleaned;
-    }
-    
-    console.warn(`Invalid time format rejected: "${timeStr}" -> "${cleaned}"`);
-    return null;
-  }
-
   if (loading && !dashboardData) {
     return (
       <div className="flex items-center justify-center p-8">
