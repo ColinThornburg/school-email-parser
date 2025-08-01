@@ -143,10 +143,55 @@ async function manualCleanupDuplicates(supabase: any, userId: string): Promise<n
 
 // Helper function to normalize time value
 function normalizeTimeValue(time?: string | null): string | null {
-  if (!time || time === 'null' || time === 'undefined' || time.trim() === '') {
+  // Handle null, undefined, or falsy values
+  if (!time) {
     return null;
   }
-  return time.trim();
+  
+  // Convert to string if it's not already (in case it's passed as some other type)
+  const timeStr = String(time).trim();
+  
+  // Handle various representations of null/empty values
+  if (
+    timeStr === '' ||
+    timeStr.toLowerCase() === 'null' ||
+    timeStr.toLowerCase() === 'undefined' ||
+    timeStr === '""' ||           // Empty string with quotes
+    timeStr === "''" ||           // Empty string with single quotes
+    timeStr === 'none' ||         // Common LLM null representation
+    timeStr === 'n/a' ||          // Not applicable
+    timeStr === '-' ||            // Dash as placeholder
+    timeStr === '0' ||            // Zero as placeholder
+    timeStr === '00:00' ||        // Midnight as placeholder
+    timeStr === '00:00:00'        // Full midnight as placeholder
+  ) {
+    return null;
+  }
+  
+  // Remove any surrounding quotes
+  const cleaned = timeStr.replace(/^["']|["']$/g, '');
+  
+  // Final check after cleaning
+  if (cleaned === '' || cleaned.toLowerCase() === 'null' || cleaned.toLowerCase() === 'undefined') {
+    return null;
+  }
+  
+  return cleaned;
+}
+
+// Additional safety check for database operations
+function validateTimeForDatabase(time: string | null): string | null {
+  if (time === null || time === undefined) {
+    return null;
+  }
+  
+  // Extra safety: if somehow a string "null" still gets through, catch it here
+  if (typeof time === 'string' && (time === 'null' || time === 'undefined' || time.trim() === '')) {
+    console.warn(`Database validator caught invalid time value: "${time}"`);
+    return null;
+  }
+  
+  return time;
 }
 
 // Helper function to check if event already exists
@@ -159,17 +204,33 @@ async function eventExists(
 ): Promise<boolean> {
   const normalizedTime = normalizeTimeValue(time);
   
+  // Debug logging to identify the problematic time value
+  if (time !== normalizedTime) {
+    console.log(`Time normalization: "${time}" -> ${normalizedTime === null ? 'NULL' : `"${normalizedTime}"`}`);
+  }
+  
+  const safeTime = validateTimeForDatabase(normalizedTime);
+  
   const { data, error } = await supabase
     .from('extracted_dates')
     .select('id')
     .eq('user_id', userId)
     .eq('event_title', title.trim())
     .eq('event_date', date)
-    .eq('event_time', normalizedTime)
+    .eq('event_time', safeTime)
     .limit(1);
 
   if (error) {
     console.error('Error checking event existence:', error);
+    console.error('Query parameters:', {
+      userId,
+      title: title.trim(),
+      date,
+      originalTime: time,
+      normalizedTime,
+      safeTime,
+      safeTimeType: typeof safeTime
+    });
     return false;
   }
 
@@ -1788,6 +1849,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             }
 
             console.log(`Storing extracted event: "${event.title}" on ${event.date} (confidence: ${event.confidence})`);
+            console.log(`Event time normalization: "${event.time}" -> ${normalizedTime === null ? 'NULL' : `"${normalizedTime}"`}`);
+            
+            const safeTime = validateTimeForDatabase(normalizedTime);
+            
             const { data: extractedDate, error: dateError } = await supabase
               .from('extracted_dates')
               .upsert({
@@ -1795,7 +1860,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 user_id: userId,
                 event_title: event.title,
                 event_date: event.date,
-                event_time: normalizedTime,
+                event_time: safeTime,
                 description: event.description,
                 confidence_score: event.confidence,
                 is_verified: false,
@@ -1811,6 +1876,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               extractedDates.push(extractedDate);
             } else if (dateError) {
               console.error('Error storing extracted date:', dateError);
+              console.error('Failed event data:', {
+                title: event.title,
+                date: event.date,
+                originalTime: event.time,
+                normalizedTime,
+                safeTime,
+                safeTimeType: typeof safeTime,
+                userId
+              });
             }
           }
         }
