@@ -1763,7 +1763,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Second pass: Process emails through LLM Orchestrator
     console.log(`\nStarting tiered LLM processing for ${emailContentsToProcess.length} emails...`);
-    console.log(`Estimated processing time: ${emailContentsToProcess.length * 2}s (may timeout after 30s if too many emails)`);
+    console.log(`Estimated processing time: ${emailContentsToProcess.length * 2}s (timeout limit: 300s)`);
     
     if (emailContentsToProcess.length > 0) {
       try {
