@@ -43,51 +43,31 @@ export default function AuthCallback() {
 
         setMessage('Saving authentication data...');
 
-        // Save tokens to Supabase
-        // Check if user already exists
-        const { data: existingUser } = await supabase
+        // Save tokens to Supabase using UPSERT to handle race conditions
+        const userId = crypto.randomUUID();
+        const { data: upsertedUser, error: upsertError } = await supabase
           .from('users')
+          .upsert({
+            email: userEmail,
+            gmail_token: tokens.accessToken,
+            gmail_refresh_token: tokens.refreshToken,
+            last_sync_at: new Date().toISOString()
+          }, {
+            onConflict: 'email',
+            ignoreDuplicates: false
+          })
           .select('id')
-          .eq('email', userEmail)
           .single();
 
-        let userId;
-        if (existingUser) {
-          // Update existing user
-          userId = existingUser.id;
-          const { error: updateError } = await supabase
-            .from('users')
-            .update({
-              gmail_token: tokens.accessToken,
-              gmail_refresh_token: tokens.refreshToken,
-              last_sync_at: new Date().toISOString()
-            })
-            .eq('id', userId);
-
-          if (updateError) {
-            throw new Error(`Database error: ${updateError.message}`);
-          }
-        } else {
-          // Create new user
-          userId = crypto.randomUUID();
-          const { error: insertError } = await supabase
-            .from('users')
-            .insert({
-              id: userId,
-              email: userEmail,
-              gmail_token: tokens.accessToken,
-              gmail_refresh_token: tokens.refreshToken,
-              last_sync_at: new Date().toISOString()
-            });
-
-          if (insertError) {
-            throw new Error(`Database error: ${insertError.message}`);
-          }
+        if (upsertError) {
+          throw new Error(`Database error: ${upsertError.message}`);
         }
+
+        const finalUserId = upsertedUser?.id || userId;
 
         // Store user info in localStorage for now
         localStorage.setItem('user', JSON.stringify({
-          id: userId,
+          id: finalUserId,
           email: userEmail,
           accessToken: tokens.accessToken,
           refreshToken: tokens.refreshToken
