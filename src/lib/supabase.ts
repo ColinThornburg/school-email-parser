@@ -76,6 +76,13 @@ export type Database = {
           processed_at: string
           content_hash: string
           has_attachments: boolean
+          email_body_preview: string | null
+          processing_status: string | null
+          processing_started_at: string | null
+          processing_completed_at: string | null
+          session_id: string | null
+          events_extracted_count: number | null
+          average_confidence_score: number | null
         }
         Insert: {
           id?: string
@@ -87,6 +94,13 @@ export type Database = {
           processed_at?: string
           content_hash: string
           has_attachments?: boolean
+          email_body_preview?: string | null
+          processing_status?: string | null
+          processing_started_at?: string | null
+          processing_completed_at?: string | null
+          session_id?: string | null
+          events_extracted_count?: number | null
+          average_confidence_score?: number | null
         }
         Update: {
           id?: string
@@ -98,6 +112,13 @@ export type Database = {
           processed_at?: string
           content_hash?: string
           has_attachments?: boolean
+          email_body_preview?: string | null
+          processing_status?: string | null
+          processing_started_at?: string | null
+          processing_completed_at?: string | null
+          session_id?: string | null
+          events_extracted_count?: number | null
+          average_confidence_score?: number | null
         }
       }
       extracted_dates: {

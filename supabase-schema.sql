@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS email_sources (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Processed emails table
+-- Processed emails table  
 CREATE TABLE IF NOT EXISTS processed_emails (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID REFERENCES users(id) ON DELETE CASCADE,
@@ -31,7 +31,14 @@ CREATE TABLE IF NOT EXISTS processed_emails (
   sent_date TIMESTAMP WITH TIME ZONE NOT NULL,
   processed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   content_hash VARCHAR(64) NOT NULL,
-  has_attachments BOOLEAN DEFAULT FALSE
+  has_attachments BOOLEAN DEFAULT FALSE,
+  email_body_preview TEXT,
+  processing_status VARCHAR(50) DEFAULT 'retrieved',
+  processing_started_at TIMESTAMP WITH TIME ZONE,
+  processing_completed_at TIMESTAMP WITH TIME ZONE,
+  session_id UUID REFERENCES sync_sessions(id) ON DELETE SET NULL,
+  events_extracted_count INTEGER DEFAULT 0,
+  average_confidence_score DECIMAL(3, 2)
 );
 
 -- Extracted dates table
@@ -87,6 +94,78 @@ CREATE TABLE IF NOT EXISTS processing_history (
   error_message TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Add missing columns to existing processed_emails table
+DO $$ 
+BEGIN
+    -- Add email_body_preview column if it doesn't exist
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'processed_emails' 
+        AND column_name = 'email_body_preview'
+    ) THEN
+        ALTER TABLE processed_emails ADD COLUMN email_body_preview TEXT;
+    END IF;
+
+    -- Add processing_status column if it doesn't exist
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'processed_emails' 
+        AND column_name = 'processing_status'
+    ) THEN
+        ALTER TABLE processed_emails ADD COLUMN processing_status VARCHAR(50) DEFAULT 'retrieved';
+    END IF;
+
+    -- Add processing_started_at column if it doesn't exist
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'processed_emails' 
+        AND column_name = 'processing_started_at'
+    ) THEN
+        ALTER TABLE processed_emails ADD COLUMN processing_started_at TIMESTAMP WITH TIME ZONE;
+    END IF;
+
+    -- Add processing_completed_at column if it doesn't exist
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'processed_emails' 
+        AND column_name = 'processing_completed_at'
+    ) THEN
+        ALTER TABLE processed_emails ADD COLUMN processing_completed_at TIMESTAMP WITH TIME ZONE;
+    END IF;
+
+    -- Add session_id column if it doesn't exist
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'processed_emails' 
+        AND column_name = 'session_id'
+    ) THEN
+        ALTER TABLE processed_emails ADD COLUMN session_id UUID REFERENCES sync_sessions(id) ON DELETE SET NULL;
+    END IF;
+
+    -- Add events_extracted_count column if it doesn't exist
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'processed_emails' 
+        AND column_name = 'events_extracted_count'
+    ) THEN
+        ALTER TABLE processed_emails ADD COLUMN events_extracted_count INTEGER DEFAULT 0;
+    END IF;
+
+    -- Add average_confidence_score column if it doesn't exist
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'processed_emails' 
+        AND column_name = 'average_confidence_score'
+    ) THEN
+        ALTER TABLE processed_emails ADD COLUMN average_confidence_score DECIMAL(3, 2);
+    END IF;
+
+EXCEPTION
+    WHEN others THEN
+        -- Table might not exist yet, ignore errors
+        NULL;
+END $$;
 
 -- Add missing columns to existing processing_history table
 DO $$ 
@@ -184,6 +263,7 @@ CREATE INDEX IF NOT EXISTS idx_email_sources_user_id ON email_sources(user_id);
 CREATE INDEX IF NOT EXISTS idx_email_sources_email ON email_sources(email);
 CREATE INDEX IF NOT EXISTS idx_processed_emails_user_id ON processed_emails(user_id);
 CREATE INDEX IF NOT EXISTS idx_processed_emails_gmail_message_id ON processed_emails(gmail_message_id);
+CREATE INDEX IF NOT EXISTS idx_processed_emails_session_id ON processed_emails(session_id);
 CREATE INDEX IF NOT EXISTS idx_extracted_dates_user_id ON extracted_dates(user_id);
 CREATE INDEX IF NOT EXISTS idx_extracted_dates_event_date ON extracted_dates(event_date);
 CREATE INDEX IF NOT EXISTS idx_sync_sessions_user_id ON sync_sessions(user_id);
