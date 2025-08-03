@@ -307,7 +307,9 @@ class OpenAIService {
         let parsedData;
         try {
           parsedData = JSON.parse(content);
-          const events = parsedData.events || [];
+          // Handle both direct array format and object with events property
+          const events = Array.isArray(parsedData) ? parsedData : (parsedData.events || []);
+          console.log('OpenAI parsed events with reasoning:', events.map(e => ({ title: e.title, reasoning: e.reasoning || 'MISSING' })));
           return this.validateAndNormalizeResponse(events, emailContent.sentDate);
         } catch (parseError) {
           console.error('OpenAI JSON parsing failed. Raw content:', content.substring(0, 1000));
@@ -317,8 +319,8 @@ class OpenAIService {
           try {
             const cleanedContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
             const retryParsed = JSON.parse(cleanedContent);
-            const events = retryParsed.events || [];
-            console.log('OpenAI JSON parsing succeeded after cleanup');
+            const events = Array.isArray(retryParsed) ? retryParsed : (retryParsed.events || []);
+            console.log('OpenAI JSON parsing succeeded after cleanup, events with reasoning:', events.map(e => ({ title: e.title, reasoning: e.reasoning || 'MISSING' })));
             return this.validateAndNormalizeResponse(events, emailContent.sentDate);
           } catch (retryError) {
             throw new Error(`Invalid JSON response from OpenAI: ${parseError instanceof Error ? parseError.message : 'Unknown parsing error'}`);
@@ -446,28 +448,28 @@ class OpenAIService {
   }
 
   private createOptimizedPrompt(emailContent: EmailContent): string {
-    return `Extract school dates from this email. Be specific and detailed.
+    return `Extract important dates from this school email. Be specific and detailed.
 
 Email: ${emailContent.subject}
 From: ${emailContent.senderEmail}
 Date: ${emailContent.sentDate}
+Body: ${emailContent.body}
 
-${emailContent.body}
+Focus on school events: assignments, tests, meetings, sports, trips, performances.
+Include specific details in titles and descriptions.
+Convert relative dates to absolute dates based on sent date: ${emailContent.sentDate}
+Only include future dates.
 
-Focus on: assignments, tests, events, sports, meetings, trips, performances.
-Include specific details (names, locations, subjects).
-Convert relative dates to absolute based on ${emailContent.sentDate}.
-Only future dates.
-
-Return JSON object:
+Return JSON object with events array:
 {
   "events": [
     {
-      "title": "specific event with details",
+      "title": "specific event title with details",
       "date": "YYYY-MM-DD",
       "time": "HH:MM" (optional),
-      "description": "context and instructions",
-      "confidence": 0.95
+      "description": "detailed context and instructions",
+      "confidence": 0.95,
+      "reasoning": "explain exactly which text/phrase led to this date extraction and your interpretation"
     }
   ]
 }
@@ -1131,6 +1133,7 @@ class GeminiService {
           }
         }
         
+        console.log('Gemini parsed events with reasoning:', events.map(e => ({ title: e.title, reasoning: e.reasoning || 'MISSING' })));
         return this.validateAndNormalizeResponse(events, emailContent.sentDate);
       }, 3, 1000, 'Gemini Extraction');
 
@@ -1780,6 +1783,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         console.log(`LLM processing completed in ${totalLLMTime}ms`);
         console.log(`Processing stats:`, llmResults.processingStats);
         console.log(`Total cost: $${llmResults.processingStats.totalCost.toFixed(4)}`);
+        
+        // Debug: Log sample events to see if reasoning is present
+        const sampleEvents = Object.values(llmResults.results).flat().slice(0, 2);
+        console.log('Sample extracted events from LLM:');
+        sampleEvents.forEach((event, i) => {
+          console.log(`Event ${i + 1}:`, {
+            title: event.title,
+            date: event.date,
+            confidence: event.confidence,
+            reasoning: event.reasoning || 'MISSING'
+          });
+        });
 
         // Store processing history for each cost tracking entry
         console.log('Storing processing history...');
@@ -1927,6 +1942,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
             console.log(`Storing extracted event: "${event.title}" on ${event.date} (confidence: ${event.confidence})`);
             console.log(`Event time normalization: "${event.time}" -> ${normalizedTime === null ? 'NULL' : `"${normalizedTime}"`}`);
+            console.log(`Event reasoning: ${event.reasoning ? `"${event.reasoning}"` : 'MISSING/NULL'}`);
             
             const safeTime = validateTimeForDatabase(normalizedTime);
             
