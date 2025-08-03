@@ -42,7 +42,9 @@ export default function Dashboard() {
           *,
           processed_emails!inner(
             sender_email,
-            subject
+            subject,
+            sent_date,
+            email_body_preview
           )
         `)
         .eq('user_id', userId)
@@ -58,7 +60,10 @@ export default function Dashboard() {
         extractedAt: new Date(event.extracted_at),
         confidenceScore: event.confidence_score, // Map snake_case to camelCase
         senderEmail: event.processed_emails.sender_email,
-        senderName: event.processed_emails.sender_email.split('@')[0] // Extract name from email
+        senderName: event.processed_emails.sender_email.split('@')[0], // Extract name from email
+        emailSubject: event.processed_emails.subject,
+        emailSentDate: new Date(event.processed_emails.sent_date),
+        emailBodyPreview: event.processed_emails.email_body_preview
       }))
 
       setEvents(formattedEvents)
@@ -512,7 +517,7 @@ export default function Dashboard() {
       {/* Event Details Modal */}
       {selectedEvent && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full max-h-[80vh] overflow-y-auto">
+          <div className="bg-white rounded-lg p-6 max-w-lg w-full max-h-[80vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold">Event Details</h2>
               <Button
@@ -547,19 +552,43 @@ export default function Dashboard() {
                 </div>
               )}
               
-              {selectedEvent.senderName && (
-                <div>
-                  <h4 className="font-medium mb-1">Email Source</h4>
-                  <p className="text-sm text-muted-foreground">
-                    From: {selectedEvent.senderName}
-                    {selectedEvent.senderEmail && (
-                      <span className="block text-xs opacity-75">
+              <div>
+                <h4 className="font-medium mb-2">Email Source</h4>
+                <div className="text-sm text-muted-foreground space-y-2">
+                  {selectedEvent.emailSubject && (
+                    <div>
+                      <span className="font-medium text-gray-700">Subject: </span>
+                      <span className="text-gray-900">{selectedEvent.emailSubject}</span>
+                    </div>
+                  )}
+                  
+                  <div>
+                    <span className="font-medium text-gray-700">From: </span>
+                    <span>{selectedEvent.senderName || selectedEvent.senderEmail}</span>
+                    {selectedEvent.senderEmail && selectedEvent.senderName && (
+                      <span className="block text-xs opacity-75 ml-0 mt-1">
                         {selectedEvent.senderEmail}
                       </span>
                     )}
-                  </p>
+                  </div>
+                  
+                  {selectedEvent.emailSentDate && (
+                    <div>
+                      <span className="font-medium text-gray-700">Sent: </span>
+                      <span>{selectedEvent.emailSentDate.toLocaleDateString()} at {selectedEvent.emailSentDate.toLocaleTimeString()}</span>
+                    </div>
+                  )}
+                  
+                  {selectedEvent.emailBodyPreview && (
+                    <div className="mt-3">
+                      <span className="font-medium text-gray-700 block mb-1">Email Preview:</span>
+                      <div className="bg-gray-50 p-2 rounded text-xs border max-h-20 overflow-y-auto">
+                        {selectedEvent.emailBodyPreview}
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
               
               <div className="flex items-center justify-between pt-4 border-t">
                 <div className="flex items-center gap-2">

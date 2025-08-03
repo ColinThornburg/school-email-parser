@@ -42,6 +42,10 @@ export interface ExtractedDate {
   // Sender information from the email
   senderEmail?: string
   senderName?: string
+  // Additional email details for troubleshooting
+  emailSubject?: string
+  emailSentDate?: Date
+  emailBodyPreview?: string
 }
 
 export interface ProcessingHistory {
