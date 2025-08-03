@@ -52,7 +52,8 @@ CREATE TABLE IF NOT EXISTS extracted_dates (
   description TEXT,
   confidence_score DECIMAL(3,2) NOT NULL CHECK (confidence_score >= 0 AND confidence_score <= 1),
   extracted_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  is_verified BOOLEAN DEFAULT FALSE
+  is_verified BOOLEAN DEFAULT FALSE,
+  reasoning TEXT
 );
 
 -- Sync sessions table (groups related processing activities)
@@ -249,6 +250,24 @@ BEGIN
         AND column_name = 'retry_count'
     ) THEN
         ALTER TABLE processing_history ADD COLUMN retry_count INTEGER DEFAULT 0;
+    END IF;
+
+EXCEPTION
+    WHEN others THEN
+        -- Table might not exist yet, ignore errors
+        NULL;
+END $$;
+
+-- Add missing columns to existing extracted_dates table
+DO $$ 
+BEGIN
+    -- Add reasoning column if it doesn't exist
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'extracted_dates' 
+        AND column_name = 'reasoning'
+    ) THEN
+        ALTER TABLE extracted_dates ADD COLUMN reasoning TEXT;
     END IF;
 
 EXCEPTION

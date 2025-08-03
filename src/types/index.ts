@@ -46,6 +46,8 @@ export interface ExtractedDate {
   emailSubject?: string
   emailSentDate?: Date
   emailBodyPreview?: string
+  // LLM reasoning for extraction
+  reasoning?: string
 }
 
 export interface ProcessingHistory {

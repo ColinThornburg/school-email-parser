@@ -590,6 +590,20 @@ export default function Dashboard() {
                 </div>
               </div>
               
+              {selectedEvent.reasoning && (
+                <div className="pt-3 border-t">
+                  <h4 className="font-medium mb-2 text-gray-700">LLM Reasoning</h4>
+                  <div className="bg-blue-50 p-3 rounded text-sm border-l-4 border-blue-400">
+                    <p className="text-gray-800 italic">
+                      "{selectedEvent.reasoning}"
+                    </p>
+                    <p className="text-xs text-gray-600 mt-2">
+                      This explains why the AI extracted this specific date from the email content.
+                    </p>
+                  </div>
+                </div>
+              )}
+              
               <div className="flex items-center justify-between pt-4 border-t">
                 <div className="flex items-center gap-2">
                   <span className="text-sm">Confidence:</span>

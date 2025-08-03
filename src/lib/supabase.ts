@@ -133,6 +133,7 @@ export type Database = {
           confidence_score: number
           extracted_at: string
           is_verified: boolean
+          reasoning: string | null
         }
         Insert: {
           id?: string
@@ -145,6 +146,7 @@ export type Database = {
           confidence_score: number
           extracted_at?: string
           is_verified?: boolean
+          reasoning?: string | null
         }
         Update: {
           id?: string
@@ -157,6 +159,7 @@ export type Database = {
           confidence_score?: number
           extracted_at?: string
           is_verified?: boolean
+          reasoning?: string | null
         }
       }
       processing_history: {

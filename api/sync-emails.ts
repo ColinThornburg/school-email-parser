@@ -9,6 +9,7 @@ interface LLMResponse {
   time?: string;
   description: string;
   confidence: number;
+  reasoning?: string;
 }
 
 // Email Content interface
@@ -1267,7 +1268,8 @@ Return JSON array:
     "date": "YYYY-MM-DD",
     "time": "HH:MM" (optional),
     "description": "detailed context and instructions",
-    "confidence": 0.95
+    "confidence": 0.95,
+    "reasoning": "explain exactly which text/phrase led to this date extraction and your interpretation"
   }
 ]
 
@@ -1302,7 +1304,8 @@ Return [] if no dates found.`;
         date: event.date,
         time: normalizedTime || undefined,
         description: event.description ? String(event.description).trim() : '',
-        confidence: confidence
+        confidence: confidence,
+        reasoning: event.reasoning ? String(event.reasoning).trim() : ''
       });
     }
 
@@ -1937,7 +1940,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               description: event.description,
               confidence_score: event.confidence,
               is_verified: false,
-              extracted_at: new Date().toISOString()
+              extracted_at: new Date().toISOString(),
+              reasoning: event.reasoning || null
             };
             
             const { data: extractedDate, error: dateError } = await supabase
