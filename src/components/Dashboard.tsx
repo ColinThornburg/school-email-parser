@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
 import Calendar from './ui/calendar'
-import { Calendar as CalendarIcon, Settings, Mail, Clock, CheckCircle, LogIn, RefreshCw, X, BarChart3 } from 'lucide-react'
+import { Calendar as CalendarIcon, Settings, Mail, Clock, CheckCircle, LogIn, RefreshCw, X, BarChart3, Trash2 } from 'lucide-react'
 import { ExtractedDate } from '../types'
 import { formatDate } from '../lib/utils'
 import { createGmailService } from '../lib/gmail'
@@ -19,6 +19,7 @@ export default function Dashboard() {
   const [isSyncing, setIsSyncing] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [selectedEvent, setSelectedEvent] = useState<ExtractedDate | null>(null)
+  const [eventToDelete, setEventToDelete] = useState<ExtractedDate | null>(null)
 
   useEffect(() => {
     // Check if user is authenticated
@@ -80,6 +81,40 @@ export default function Dashboard() {
 
   const closeEventModal = () => {
     setSelectedEvent(null)
+  }
+
+  const handleDeleteEvent = async (event: ExtractedDate) => {
+    try {
+      const { error } = await supabase
+        .from('extracted_dates')
+        .delete()
+        .eq('id', event.id)
+
+      if (error) {
+        throw error
+      }
+
+      // Remove the event from local state
+      setEvents(events.filter(e => e.id !== event.id))
+      
+      // Close modals
+      setEventToDelete(null)
+      setSelectedEvent(null)
+      
+      console.log(`Successfully deleted event: ${event.eventTitle}`)
+    } catch (error) {
+      console.error('Error deleting event:', error)
+      alert(`Failed to delete event: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
+  const confirmDeleteEvent = (event: ExtractedDate, e?: React.MouseEvent) => {
+    e?.stopPropagation() // Prevent event bubbling
+    setEventToDelete(event)
+  }
+
+  const cancelDelete = () => {
+    setEventToDelete(null)
   }
 
   const handleGmailAuth = () => {
@@ -448,6 +483,15 @@ export default function Dashboard() {
                           >
                             {Math.round(event.confidenceScore * 100)}%
                           </span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => confirmDeleteEvent(event, e)}
+                            className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                            title="Delete event"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
                           {event.isVerified && (
                             <CheckCircle className="h-4 w-4 text-green-600" />
                           )}
@@ -631,6 +675,65 @@ export default function Dashboard() {
               <div className="text-xs text-muted-foreground">
                 Extracted: {selectedEvent.extractedAt.toLocaleDateString()}
               </div>
+              
+              <div className="flex items-center gap-2 pt-4 border-t mt-4">
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => confirmDeleteEvent(selectedEvent)}
+                  className="flex items-center gap-2"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete Event
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {eventToDelete && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-red-100 rounded-full">
+                <Trash2 className="h-5 w-5 text-red-600" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold">Delete Event</h2>
+                <p className="text-sm text-gray-600">This action cannot be undone</p>
+              </div>
+            </div>
+            
+            <div className="mb-6">
+              <p className="text-sm text-gray-700 mb-2">
+                Are you sure you want to delete this event?
+              </p>
+              <div className="bg-gray-50 p-3 rounded border">
+                <p className="font-medium">{eventToDelete.eventTitle}</p>
+                <p className="text-sm text-gray-600">
+                  {formatDate(eventToDelete.eventDate)}
+                  {eventToDelete.eventTime && ` at ${eventToDelete.eventTime}`}
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-3 justify-end">
+              <Button
+                variant="ghost"
+                onClick={cancelDelete}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => handleDeleteEvent(eventToDelete)}
+                className="flex items-center gap-2"
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete
+              </Button>
             </div>
           </div>
         </div>
