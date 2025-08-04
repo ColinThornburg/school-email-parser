@@ -1340,8 +1340,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.log('Supabase client initialized');
 
     // Get user and access token from request
-    const { userId, accessToken: initialAccessToken, refreshToken, forceReprocess = false } = req.body;
-    console.log('Request body parsed, userId:', userId, 'forceReprocess:', forceReprocess);
+      const { userId, accessToken: initialAccessToken, refreshToken, forceReprocess = false, lookbackDays } = req.body;
+  console.log('Request body parsed, userId:', userId, 'forceReprocess:', forceReprocess, 'lookbackDays:', lookbackDays);
 
     if (!userId || !initialAccessToken) {
       return res.status(400).json({ error: 'Missing required parameters' });
@@ -1392,7 +1392,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .insert({
           user_id: userId,
           session_type: sessionType,
-          lookback_days: parseInt(process.env.EMAIL_LOOKBACK_DAYS || '7'),
+          lookback_days: lookbackDays || parseInt(process.env.EMAIL_LOOKBACK_DAYS || '7'),
           processing_mode: process.env.ENABLE_BATCH_PROCESSING === 'true' ? 'batch' : 'single'
         })
         .select()
@@ -1527,7 +1527,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const sourceEmails = emailSources.map(source => source.email);
     
     // Get configurable lookback days with reasonable limits
-    const configuredLookbackDays = parseInt(process.env.EMAIL_LOOKBACK_DAYS || '7');
+    const configuredLookbackDays = lookbackDays || parseInt(process.env.EMAIL_LOOKBACK_DAYS || '7');
     const maxLookbackDays = 30; // Maximum 30 days to prevent API abuse
     const minLookbackDays = 1;  // Minimum 1 day
     
@@ -1553,7 +1553,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (forceReprocess) {
       console.log(`Using reprocess mode: 90-day lookback with ${maxResults} max results`);
     } else {
-      console.log(`Using sync mode: ${safeLookbackDays}-day lookback (configured: ${configuredLookbackDays})`);
+      console.log(`Using sync mode: ${safeLookbackDays}-day lookback (user requested: ${lookbackDays || 'default'}, configured: ${configuredLookbackDays})`);
     }
     console.log(`Gmail search query: ${query}`);
     console.log(`Searching for emails received by ${sourceEmails.length} configured sources: ${sourceEmails.join(', ')}`);

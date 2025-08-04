@@ -20,6 +20,7 @@ export default function Dashboard() {
   const [showSettings, setShowSettings] = useState(false)
   const [selectedEvent, setSelectedEvent] = useState<ExtractedDate | null>(null)
   const [eventToDelete, setEventToDelete] = useState<ExtractedDate | null>(null)
+  const [lookbackDays, setLookbackDays] = useState(7)
 
   useEffect(() => {
     // Check if user is authenticated
@@ -149,7 +150,8 @@ export default function Dashboard() {
           userId: user.id,
           accessToken: user.accessToken,
           refreshToken: user.refreshToken,
-          forceReprocess: false
+          forceReprocess: false,
+          lookbackDays: lookbackDays
         }),
       })
 
@@ -167,7 +169,7 @@ export default function Dashboard() {
       // Refresh events after sync
       await fetchEvents(user.id)
       
-      let message = `Sync completed! Processed ${result.processed} emails and extracted ${result.extracted} dates.`
+      let message = `Sync completed! Processed ${result.processed} emails and extracted ${result.extracted} dates.\nLooked back ${lookbackDays} day${lookbackDays !== 1 ? 's' : ''} for emails.`
       if (result.duplicatesRemoved > 0) {
         message += `\nRemoved ${result.duplicatesRemoved} duplicate events.`
       }
@@ -216,7 +218,8 @@ export default function Dashboard() {
           userId: user.id,
           accessToken: user.accessToken,
           refreshToken: user.refreshToken,
-          forceReprocess: true
+          forceReprocess: true,
+          lookbackDays: lookbackDays
         }),
       })
 
@@ -234,7 +237,7 @@ export default function Dashboard() {
       // Refresh events after reprocessing
       await fetchEvents(user.id)
       
-      let message = `Reprocessing completed! Processed ${result.processed} emails and extracted ${result.extracted} dates.`
+      let message = `Reprocessing completed! Processed ${result.processed} emails and extracted ${result.extracted} dates.\nUsed ${lookbackDays}-day lookback period (reprocess uses up to 90 days).`
       if (result.duplicatesRemoved > 0) {
         message += `\nRemoved ${result.duplicatesRemoved} duplicate events during cleanup.`
       }
@@ -513,6 +516,32 @@ export default function Dashboard() {
             <CardTitle>Quick Actions</CardTitle>
           </CardHeader>
           <CardContent>
+            {/* Lookback Period Selector */}
+            <div className="mb-4 p-3 bg-gray-50 rounded-lg border">
+              <div className="flex items-center gap-4">
+                <label htmlFor="lookback-select" className="text-sm font-medium text-gray-700">
+                  Email Lookback Period:
+                </label>
+                <select
+                  id="lookback-select"
+                  value={lookbackDays}
+                  onChange={(e) => setLookbackDays(parseInt(e.target.value))}
+                  className="px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  disabled={isSyncing}
+                >
+                  <option value={1}>1 day</option>
+                  <option value={3}>3 days</option>
+                  <option value={7}>7 days (1 week)</option>
+                  <option value={14}>14 days (2 weeks)</option>
+                  <option value={21}>21 days (3 weeks)</option>
+                  <option value={30}>30 days (1 month)</option>
+                </select>
+                <span className="text-xs text-gray-500">
+                  Search for emails received in the last {lookbackDays} day{lookbackDays !== 1 ? 's' : ''}
+                </span>
+              </div>
+            </div>
+            
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <Button 
                 className="w-full" 
