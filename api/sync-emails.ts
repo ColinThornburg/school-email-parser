@@ -1524,7 +1524,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Build Gmail search query with configurable lookback window
-    const senderEmails = emailSources.map(source => source.email);
+    const sourceEmails = emailSources.map(source => source.email);
     
     // Get configurable lookback days with reasonable limits
     const configuredLookbackDays = parseInt(process.env.EMAIL_LOOKBACK_DAYS || '7');
@@ -1540,10 +1540,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (forceReprocess) {
       // For reprocess, look back 90 days to find historical emails to reprocess
       // But limit results to avoid timeouts
-      query = `from:(${senderEmails.join(' OR ')}) newer_than:90d`;
+      query = `to:(${sourceEmails.join(' OR ')}) newer_than:90d`;
       console.log('Reprocess mode: Using 90-day lookback to find historical emails');
     } else {
-      query = `from:(${senderEmails.join(' OR ')}) newer_than:${safeLookbackDays}d`;
+      query = `to:(${sourceEmails.join(' OR ')}) newer_than:${safeLookbackDays}d`;
     }
     
     // Fetch emails from Gmail with optimized batch size
@@ -1556,7 +1556,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.log(`Using sync mode: ${safeLookbackDays}-day lookback (configured: ${configuredLookbackDays})`);
     }
     console.log(`Gmail search query: ${query}`);
-    console.log(`Searching for emails from ${senderEmails.length} configured sources: ${senderEmails.join(', ')}`);
+    console.log(`Searching for emails received by ${sourceEmails.length} configured sources: ${sourceEmails.join(', ')}`);
     const messagesResponse = await gmailService.listMessages(accessToken, {
       maxResults: maxResults,
       q: query
