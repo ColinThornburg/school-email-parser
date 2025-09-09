@@ -7,7 +7,11 @@ if (!supabaseUrl || !supabaseKey) {
   throw new Error('Missing Supabase environment variables')
 }
 
+// Main client for general operations (with RLS)
 export const supabase = createClient(supabaseUrl, supabaseKey)
+
+// For user management operations, we'll use API endpoints that use the service key
+// This avoids RLS issues with custom authentication
 
 // Database types
 export type Database = {

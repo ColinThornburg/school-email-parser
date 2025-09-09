@@ -33,6 +33,8 @@ export default function Calendar({ events, onEventClick }: CalendarProps) {
     endOfWeek.setDate(startOfWeek.getDate() + 6)
     endOfWeek.setHours(23, 59, 59, 999)
     
+    // Calendar date filtering works correctly
+    
     return eventDate >= startOfWeek && eventDate <= endOfWeek
   })
 
@@ -69,6 +71,13 @@ export default function Calendar({ events, onEventClick }: CalendarProps) {
     const dayOfWeek = today.getDay()
     const startOfWeek = new Date(today)
     startOfWeek.setDate(today.getDate() - dayOfWeek)
+    setCurrentWeekStart(startOfWeek)
+  }
+
+  const goToDate = (targetDate: Date) => {
+    const dayOfWeek = targetDate.getDay()
+    const startOfWeek = new Date(targetDate)
+    startOfWeek.setDate(targetDate.getDate() - dayOfWeek)
     setCurrentWeekStart(startOfWeek)
   }
 
@@ -196,7 +205,7 @@ export default function Calendar({ events, onEventClick }: CalendarProps) {
                       </div>
                     )}
                     <div className="font-medium leading-tight">
-                      {event.eventTitle}
+                      {event.eventTitle || event.event_title || event.description || 'Untitled Event'}
                     </div>
                     {event.senderName && (
                       <div className="mt-1 text-xs opacity-60 font-medium">

@@ -59,6 +59,7 @@ export default function Dashboard() {
       const formattedEvents = data.map(event => ({
         ...event,
         eventDate: new Date(event.event_date + 'T00:00:00'), // Add time to avoid timezone issues
+        eventTitle: event.event_title, // Map snake_case to camelCase
         extractedAt: new Date(event.extracted_at),
         confidenceScore: event.confidence_score, // Map snake_case to camelCase
         senderEmail: event.processed_emails.sender_email,
@@ -67,6 +68,8 @@ export default function Dashboard() {
         emailSentDate: new Date(event.processed_emails.sent_date),
         emailBodyPreview: event.processed_emails.email_body_preview
       }))
+
+      // Event data mapping completed successfully
 
       setEvents(formattedEvents)
     } catch (error) {

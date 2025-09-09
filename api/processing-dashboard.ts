@@ -150,39 +150,47 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Transform processed emails into session-like format for dashboard
-    const emailBasedSessions = emailSessions.map(email => ({
-      id: email.id,
-      session_type: 'email_processing',
-      email_data: {
-        subject: email.subject,
-        sender_email: email.sender_email,
-        sent_date: email.sent_date,
-        body_preview: email.email_body_preview,
-        processing_status: email.processing_status,
-        processing_started_at: email.processing_started_at,
-        processing_completed_at: email.processing_completed_at,
-        events_extracted_count: email.events_extracted_count || 0,
-        average_confidence_score: email.average_confidence_score,
-        processing_cost: email.processing_cost || 0,
-        total_tokens_used: email.total_tokens_used || 0,
-        llm_providers_used: email.llm_providers_used,
-        models_used: email.models_used,
-        processing_time_ms: email.processing_time_ms || 0,
-        had_date_content: email.had_date_content,
-        classification_passed: email.classification_passed,
-        extraction_successful: email.extraction_successful,
-        processing_error_message: email.processing_error_message,
-        has_attachments: email.has_attachments
-      },
-      extracted_events: email.extracted_dates || [],
-      // Map to session-like fields for compatibility
-      started_at: email.processing_started_at || email.processed_at,
-      completed_at: email.processing_completed_at || email.processed_at,
-      success_status: email.extraction_successful !== false,
-      total_emails_processed: 1,
-      total_events_extracted: email.events_extracted_count || 0,
-      total_cost: email.processing_cost || 0
-    }));
+    const emailBasedSessions = emailSessions.map(email => {
+      // Handle missing columns gracefully
+      const processingCost = email.processing_cost || (email as any).processing_cost || 0;
+      const eventsCount = email.events_extracted_count || (email.extracted_dates?.length || 0);
+      const extractionSuccessful = email.extraction_successful !== false && 
+                                  (email.extraction_successful === true || eventsCount > 0);
+      
+      return {
+        id: email.id,
+        session_type: 'email_processing',
+        email_data: {
+          subject: email.subject,
+          sender_email: email.sender_email,
+          sent_date: email.sent_date,
+          body_preview: email.email_body_preview,
+          processing_status: email.processing_status || 'completed',
+          processing_started_at: email.processing_started_at,
+          processing_completed_at: email.processing_completed_at,
+          events_extracted_count: eventsCount,
+          average_confidence_score: email.average_confidence_score,
+          processing_cost: processingCost,
+          total_tokens_used: (email as any).total_tokens_used || 0,
+          llm_providers_used: (email as any).llm_providers_used,
+          models_used: (email as any).models_used,
+          processing_time_ms: (email as any).processing_time_ms || 0,
+          had_date_content: (email as any).had_date_content,
+          classification_passed: (email as any).classification_passed,
+          extraction_successful: extractionSuccessful,
+          processing_error_message: (email as any).processing_error_message,
+          has_attachments: email.has_attachments
+        },
+        extracted_events: email.extracted_dates || [],
+        // Map to session-like fields for compatibility
+        started_at: email.processing_started_at || email.processed_at,
+        completed_at: email.processing_completed_at || email.processed_at,
+        success_status: extractionSuccessful,
+        total_emails_processed: 1,
+        total_events_extracted: eventsCount,
+        total_cost: processingCost
+      };
+    });
 
     // Calculate dashboard summary from processed emails
     console.log('Calculating summary statistics from processed emails...');
@@ -199,11 +207,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const recentEmails = allProcessedEmails?.filter(email => 
       new Date(email.processed_at) >= thirtyDaysAgo) || [];
 
-    // Calculate totals
+    // Calculate totals (handle missing columns gracefully)
     const totalEmails = allProcessedEmails?.length || 0;
     const totalEvents = allProcessedEmails?.reduce((sum, email) => sum + (email.events_extracted_count || 0), 0) || 0;
-    const totalCost = allProcessedEmails?.reduce((sum, email) => sum + parseFloat(email.processing_cost || '0'), 0) || 0;
-    const successfulEmails = allProcessedEmails?.filter(email => email.extraction_successful !== false).length || 0;
+    const totalCost = allProcessedEmails?.reduce((sum, email) => {
+      // Handle missing processing_cost column
+      const cost = email.processing_cost || (email as any).processing_cost || 0;
+      return sum + parseFloat(String(cost));
+    }, 0) || 0;
+    const successfulEmails = allProcessedEmails?.filter(email => {
+      // Handle missing extraction_successful column - assume success if events were extracted
+      const successful = email.extraction_successful !== false && 
+                        (email.extraction_successful === true || (email.events_extracted_count || 0) > 0);
+      return successful;
+    }).length || 0;
 
     // Create provider breakdown from processed emails
     const providerBreakdown: { [key: string]: any } = {};
@@ -242,11 +259,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       totalCost: totalCost,
       averageCostPerEmail: totalEmails > 0 ? totalCost / totalEmails : 0,
       successRate: totalEmails > 0 ? successfulEmails / totalEmails : 0,
-      last30Days: {
+        last30Days: {
         sessions: recentEmails.length,
         emails: recentEmails.length,
         events: recentEmails.reduce((sum, email) => sum + (email.events_extracted_count || 0), 0),
-        cost: recentEmails.reduce((sum, email) => sum + parseFloat(email.processing_cost || '0'), 0)
+        cost: recentEmails.reduce((sum, email) => {
+          const cost = email.processing_cost || (email as any).processing_cost || 0;
+          return sum + parseFloat(String(cost));
+        }, 0)
       },
       providerBreakdown
     };
