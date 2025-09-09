@@ -74,12 +74,13 @@ export default function Calendar({ events, onEventClick }: CalendarProps) {
     setCurrentWeekStart(startOfWeek)
   }
 
-  const goToDate = (targetDate: Date) => {
-    const dayOfWeek = targetDate.getDay()
-    const startOfWeek = new Date(targetDate)
-    startOfWeek.setDate(targetDate.getDate() - dayOfWeek)
-    setCurrentWeekStart(startOfWeek)
-  }
+  // Helper function to navigate to a specific date (for future use)
+  // const goToDate = (targetDate: Date) => {
+  //   const dayOfWeek = targetDate.getDay()
+  //   const startOfWeek = new Date(targetDate)
+  //   startOfWeek.setDate(targetDate.getDate() - dayOfWeek)
+  //   setCurrentWeekStart(startOfWeek)
+  // }
 
   const isToday = (date: Date) => {
     const today = new Date()
@@ -205,7 +206,7 @@ export default function Calendar({ events, onEventClick }: CalendarProps) {
                       </div>
                     )}
                     <div className="font-medium leading-tight">
-                      {event.eventTitle || event.event_title || event.description || 'Untitled Event'}
+                      {event.eventTitle || event.description || 'Untitled Event'}
                     </div>
                     {event.senderName && (
                       <div className="mt-1 text-xs opacity-60 font-medium">
