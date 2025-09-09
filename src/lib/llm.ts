@@ -78,7 +78,7 @@ Email Details:
 - From: ${emailContent.senderEmail}
 - Subject: ${emailContent.subject}
 
-Email Content:
+Email Content (cleaned from HTML):
 ${emailContent.body}
 
 Instructions:
@@ -215,7 +215,7 @@ Email Details:
 - From: ${emailContent.senderEmail}
 - Subject: ${emailContent.subject}
 
-Email Content:
+Email Content (cleaned from HTML):
 ${emailContent.body}
 
 Instructions:

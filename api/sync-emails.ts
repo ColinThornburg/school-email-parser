@@ -2,6 +2,90 @@ import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 import { VercelRequest, VercelResponse } from '@vercel/node';
 
+/**
+ * Converts HTML content to clean plain text
+ * Handles HTML entities, preserves meaningful whitespace, and cleans up formatting
+ */
+function htmlToText(html: string): string {
+  if (!html) return '';
+  
+  let text = html;
+  
+  // Replace common block elements with line breaks
+  text = text.replace(/<\/?(div|p|br|h[1-6]|li|tr|td|th)[^>]*>/gi, '\n');
+  
+  // Replace list items with bullet points
+  text = text.replace(/<li[^>]*>/gi, '\n• ');
+  
+  // Remove all other HTML tags
+  text = text.replace(/<[^>]*>/g, '');
+  
+  // Decode common HTML entities
+  const entities: { [key: string]: string } = {
+    '&amp;': '&',
+    '&lt;': '<',
+    '&gt;': '>',
+    '&quot;': '"',
+    '&#39;': "'",
+    '&apos;': "'",
+    '&nbsp;': ' ',
+    '&ndash;': '–',
+    '&mdash;': '—',
+    '&hellip;': '…',
+    '&copy;': '©',
+    '&reg;': '®',
+    '&trade;': '™'
+  };
+  
+  // Replace HTML entities
+  for (const [entity, replacement] of Object.entries(entities)) {
+    text = text.replace(new RegExp(entity, 'gi'), replacement);
+  }
+  
+  // Handle numeric HTML entities (like &#160; for non-breaking space)
+  text = text.replace(/&#(\d+);/g, (match, dec) => {
+    return String.fromCharCode(parseInt(dec, 10));
+  });
+  
+  // Handle hex HTML entities (like &#x00A0; for non-breaking space)
+  text = text.replace(/&#x([0-9A-F]+);/gi, (match, hex) => {
+    return String.fromCharCode(parseInt(hex, 16));
+  });
+  
+  // Clean up whitespace
+  text = text
+    .replace(/\r\n/g, '\n') // Normalize line endings
+    .replace(/\r/g, '\n') // Normalize line endings
+    .replace(/\n{3,}/g, '\n\n') // Replace multiple line breaks with double line breaks
+    .replace(/[ \t]+/g, ' ') // Replace multiple spaces/tabs with single space
+    .replace(/[ \t]*\n[ \t]*/g, '\n') // Remove spaces around line breaks
+    .trim(); // Remove leading/trailing whitespace
+  
+  return text;
+}
+
+/**
+ * Extracts and cleans text content from email body, handling both plain text and HTML
+ */
+function extractEmailText(body: string): string {
+  if (!body) return '';
+  
+  // Check if content appears to be HTML (contains HTML tags)
+  const hasHtmlTags = /<[^>]+>/.test(body);
+  
+  if (hasHtmlTags) {
+    return htmlToText(body);
+  }
+  
+  // For plain text, just clean up whitespace
+  return body
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]+/g, ' ')
+    .trim();
+}
+
 // LLM Response interface
 interface LLMResponse {
   title: string;
@@ -453,7 +537,7 @@ class OpenAIService {
 Email: ${emailContent.subject}
 From: ${emailContent.senderEmail}
 Date: ${emailContent.sentDate}
-Body: ${emailContent.body}
+Body (cleaned from HTML): ${emailContent.body}
 
 Focus on school events: assignments, tests, meetings, sports, trips, performances.
 Include specific details in titles and descriptions.
@@ -900,8 +984,8 @@ class GmailService {
       body = message.payload.parts.map(extractBody).join('\n');
     }
 
-    // Clean HTML tags from body
-    body = body.replace(/<[^>]*>/g, '').trim();
+    // Clean HTML and extract readable text from body
+    body = extractEmailText(body);
 
     return { subject, body, from, date };
   }
@@ -1257,7 +1341,7 @@ Return true if ANY date/time information is found, false otherwise.`;
 Email: ${emailContent.subject}
 From: ${emailContent.senderEmail}
 Date: ${emailContent.sentDate}
-Body: ${emailContent.body}
+Body (cleaned from HTML): ${emailContent.body}
 
 Focus on school events: assignments, tests, meetings, sports, trips, performances.
 Include specific details in titles and descriptions.

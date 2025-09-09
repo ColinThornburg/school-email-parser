@@ -1,3 +1,5 @@
+import { extractEmailText } from './utils';
+
 export interface GmailConfig {
   clientId: string;
   clientSecret: string;
@@ -194,8 +196,8 @@ export class GmailService {
       body = message.payload.parts.map(extractBody).join('\n');
     }
 
-    // Clean HTML tags from body
-    body = body.replace(/<[^>]*>/g, '').trim();
+    // Clean HTML and extract readable text from body
+    body = extractEmailText(body);
 
     return { subject, body, from, date };
   }
