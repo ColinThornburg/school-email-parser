@@ -2,17 +2,18 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
 import Calendar from './ui/calendar'
-import { Calendar as CalendarIcon, Settings, Mail, Clock, CheckCircle, LogIn, RefreshCw, X, BarChart3, Trash2 } from 'lucide-react'
+import { Calendar as CalendarIcon, Settings, Mail, Clock, CheckCircle, LogIn, RefreshCw, X, BarChart3, Trash2, FileText } from 'lucide-react'
 import { ExtractedDate } from '../types'
 import { formatDate } from '../lib/utils'
 import { createGmailService } from '../lib/gmail'
 import { supabase } from '../lib/supabase'
 import EmailSourceManager from './EmailSourceManager'
 import ProcessingDashboard from './ProcessingDashboard'
+import EmailSummaries from './EmailSummaries'
 
 export default function Dashboard() {
   const [events, setEvents] = useState<ExtractedDate[]>([])
-  const [view, setView] = useState<'calendar' | 'list' | 'processing'>('calendar')
+  const [view, setView] = useState<'calendar' | 'list' | 'processing' | 'summaries'>('calendar')
   const [user, setUser] = useState<any>(null)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
@@ -335,6 +336,13 @@ export default function Dashboard() {
             List
           </Button>
           <Button
+            variant={view === 'summaries' ? 'default' : 'outline'}
+            onClick={() => setView('summaries')}
+          >
+            <FileText className="h-4 w-4 mr-2" />
+            Summaries
+          </Button>
+          <Button
             variant={view === 'processing' ? 'default' : 'outline'}
             onClick={() => setView('processing')}
           >
@@ -436,7 +444,9 @@ export default function Dashboard() {
             <CardHeader>
               <CardTitle>
                 {view === 'calendar' ? 'Weekly Calendar View' : 
-                 view === 'list' ? 'Event List' : 'Processing Dashboard'}
+                 view === 'list' ? 'Event List' : 
+                 view === 'summaries' ? 'Email Summaries' :
+                 'Processing Dashboard'}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -506,6 +516,8 @@ export default function Dashboard() {
                     ))
                   )}
                 </div>
+              ) : view === 'summaries' ? (
+                <EmailSummaries user={user} />
               ) : (
                 <ProcessingDashboard user={user} />
               )}

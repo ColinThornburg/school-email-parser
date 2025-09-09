@@ -106,4 +106,39 @@ export interface ConfigSettings {
   llmProvider: 'openai' | 'claude'
   processingInterval: number
   confidenceThreshold: number
+}
+
+export interface EmailSummary {
+  id: string
+  emailId: string
+  userId: string
+  subject: string
+  senderEmail: string
+  senderName?: string
+  sentDate: Date
+  summary: {
+    keyPoints: string[]
+    importantDates: Array<{
+      date: string
+      description: string
+      originalText: string
+    }>
+    actionItems: string[]
+    categories: string[]
+  }
+  confidence: number
+  generatedAt: Date
+  emailBodyPreview?: string
+}
+
+export interface SummaryResponse {
+  keyPoints: string[]
+  importantDates: Array<{
+    date: string
+    description: string
+    originalText: string
+  }>
+  actionItems: string[]
+  categories: string[]
+  confidence: number
 } 
