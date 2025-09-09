@@ -46,12 +46,12 @@ export function htmlToText(html: string): string {
   }
   
   // Handle numeric HTML entities (like &#160; for non-breaking space)
-  text = text.replace(/&#(\d+);/g, (match, dec) => {
+  text = text.replace(/&#(\d+);/g, (_match, dec) => {
     return String.fromCharCode(parseInt(dec, 10));
   });
   
   // Handle hex HTML entities (like &#x00A0; for non-breaking space)
-  text = text.replace(/&#x([0-9A-F]+);/gi, (match, hex) => {
+  text = text.replace(/&#x([0-9A-F]+);/gi, (_match, hex) => {
     return String.fromCharCode(parseInt(hex, 16));
   });
   
