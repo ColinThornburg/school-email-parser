@@ -41,6 +41,8 @@ export default function Dashboard() {
 
   const fetchEvents = async (userId: string) => {
     try {
+      console.log('Fetching events for user (v2):', userId);
+      
       const { data, error } = await supabase
         .from('extracted_dates')
         .select(`
@@ -49,30 +51,53 @@ export default function Dashboard() {
             sender_email,
             subject,
             sent_date,
-            email_body_preview,
-            email_sources(
-              tag_id,
-              tags(
-                id,
-                name,
-                type,
-                color,
-                emoji
-              )
-            )
+            email_body_preview
           )
         `)
         .eq('user_id', userId)
         .order('event_date', { ascending: true })
 
       if (error) {
+        console.error('Error in main events query:', error);
         throw error
       }
+      
+      console.log('Fetched events data:', data);
+
+      // Fetch email sources with tags to match against sender emails
+      const { data: emailSources, error: sourcesError } = await supabase
+        .from('email_sources')
+        .select(`
+          email,
+          tags(
+            id,
+            name,
+            type,
+            color,
+            emoji
+          )
+        `)
+        .eq('user_id', userId)
+        .eq('is_active', true)
+        
+      if (sourcesError) {
+        console.error('Error fetching email sources:', sourcesError);
+      }
+      
+      console.log('Fetched email sources:', emailSources);
 
       const formattedEvents = data.map(event => {
-        // Find the tag from email sources
-        const emailSource = event.processed_emails?.email_sources?.[0];
-        const tag = emailSource?.tags;
+        // Find matching email source based on sender email
+        const senderEmail = event.processed_emails.sender_email;
+        const matchingSource = emailSources?.find(source => {
+          // Check for exact email match or domain match
+          return source.email === senderEmail || 
+                 (source.email.startsWith('@') && senderEmail.includes(source.email.substring(1))) ||
+                 (senderEmail.includes('@') && source.email.includes('@') && 
+                  senderEmail.split('@')[1] === source.email.split('@')[1])
+        });
+        
+        const tag = matchingSource?.tags?.[0]; // Get first tag since it's an array
         
         return {
           ...event,
@@ -99,6 +124,7 @@ export default function Dashboard() {
       })
 
       // Event data mapping completed successfully
+      console.log('Final formatted events:', formattedEvents);
 
       setEvents(formattedEvents)
     } catch (error) {
