@@ -308,6 +308,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     console.log(`Found ${cachedSummaries.length} emails, checking cache status...`);
+    
+    // Debug: Log the structure of the first email
+    if (cachedSummaries.length > 0) {
+      console.log('Sample email structure:', {
+        id: cachedSummaries[0].id,
+        subject: cachedSummaries[0].subject,
+        email_summaries_count: cachedSummaries[0].email_summaries?.length || 0,
+        email_summaries_sample: cachedSummaries[0].email_summaries?.[0] ? {
+          id: cachedSummaries[0].email_summaries[0].id,
+          hasData: !!cachedSummaries[0].email_summaries[0].summary_data
+        } : null
+      });
+    }
 
     // Step 2: Identify emails that need summary generation
     const emailsNeedingSummary: EmailNeedingSummary[] = [];
@@ -327,18 +340,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       } else {
         // Use cached summary
         const cachedSummary = email.email_summaries[0];
-        existingSummaries.push({
-          id: cachedSummary.id,
-          emailId: email.id,
-          userId: userId as string,
-          subject: email.subject,
-          senderEmail: email.sender_email,
-          sentDate: new Date(email.sent_date),
-          summary: cachedSummary.summary_data as SummaryResponse,
-          confidence: cachedSummary.confidence_score,
-          generatedAt: new Date(cachedSummary.generated_at),
-          emailBodyPreview: email.email_body_preview?.substring(0, 200) + '...'
-        });
+        if (cachedSummary && cachedSummary.id) {
+          existingSummaries.push({
+            id: cachedSummary.id,
+            emailId: email.id,
+            userId: userId as string,
+            subject: email.subject,
+            senderEmail: email.sender_email,
+            sentDate: new Date(email.sent_date),
+            summary: cachedSummary.summary_data as SummaryResponse,
+            confidence: cachedSummary.confidence_score,
+            generatedAt: new Date(cachedSummary.generated_at),
+            emailBodyPreview: email.email_body_preview?.substring(0, 200) + '...'
+          });
+        } else {
+          console.warn(`Cached summary missing or invalid for email ${email.id}:`, cachedSummary);
+          // Treat as needing summary generation
+          emailsNeedingSummary.push({
+            email_id: email.id,
+            subject: email.subject,
+            sender_email: email.sender_email,
+            sent_date: email.sent_date,
+            email_body_preview: email.email_body_preview,
+            content_hash: email.content_hash
+          });
+        }
       }
     }
 
