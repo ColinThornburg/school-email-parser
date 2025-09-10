@@ -287,7 +287,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (cacheError) {
       console.error('Error fetching cached summaries:', cacheError);
-      return res.status(500).json({ error: 'Failed to fetch cached summaries' });
+      
+      // Check if it's a missing table error
+      if (cacheError.message?.includes('email_summaries') || cacheError.code === '42P01') {
+        return res.status(500).json({ 
+          error: 'Email summaries table not found',
+          details: 'The email_summaries table may not exist. Please run the database migration to create it.',
+          migrationRequired: true
+        });
+      }
+      
+      return res.status(500).json({ 
+        error: 'Failed to fetch cached summaries',
+        details: cacheError.message || 'Unknown database error'
+      });
     }
 
     if (!cachedSummaries || cachedSummaries.length === 0) {
@@ -371,7 +384,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             .select()
             .single();
 
-          if (storeError) {
+          if (storeError || !storedSummary) {
             console.error(`Failed to store summary for email ${emailData.email_id}:`, storeError);
             continue;
           }

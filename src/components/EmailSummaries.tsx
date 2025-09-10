@@ -36,8 +36,13 @@ export default function EmailSummaries({ user: propUser }: Props) {
 
       const response = await fetch(`/api/email-summaries?userId=${currentUser.id}&limit=10&offset=${offset}`);
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Failed to fetch email summaries: ${response.status} ${response.statusText} - ${errorText}`);
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        
+        if (errorData.migrationRequired) {
+          throw new Error(`Database Migration Required: ${errorData.details}`);
+        }
+        
+        throw new Error(`Failed to fetch email summaries: ${response.status} ${response.statusText} - ${errorData.details || errorData.error}`);
       }
 
       const data = await response.json();
@@ -82,23 +87,52 @@ export default function EmailSummaries({ user: propUser }: Props) {
   }
 
   if (error) {
+    const isMigrationError = error.includes('Database Migration Required');
+    
     return (
       <div className="p-6">
-        <Card className="border-red-200 bg-red-50">
+        <Card className={isMigrationError ? "border-blue-200 bg-blue-50" : "border-red-200 bg-red-50"}>
           <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-red-800">
-              <span className="text-red-600">⚠️</span>
-              <span className="font-medium">Error loading email summaries</span>
+            <div className={`flex items-center gap-2 ${isMigrationError ? 'text-blue-800' : 'text-red-800'}`}>
+              <span className={isMigrationError ? 'text-blue-600' : 'text-red-600'}>
+                {isMigrationError ? '🔧' : '⚠️'}
+              </span>
+              <span className="font-medium">
+                {isMigrationError ? 'Setup Required' : 'Error loading email summaries'}
+              </span>
             </div>
-            <p className="text-red-700 mt-1 text-sm">{error}</p>
-            <Button 
-              onClick={() => loadSummaries(0)} 
-              variant="outline" 
-              size="sm" 
-              className="mt-3"
-            >
-              Try Again
-            </Button>
+            <p className={`mt-1 text-sm ${isMigrationError ? 'text-blue-700' : 'text-red-700'}`}>
+              {error}
+            </p>
+            {isMigrationError && (
+              <div className="mt-3 p-3 bg-white border border-blue-200 rounded">
+                <p className="text-sm text-blue-800 font-medium mb-2">To enable email summaries:</p>
+                <ol className="text-sm text-blue-700 list-decimal list-inside space-y-1">
+                  <li>Go to your Supabase SQL Editor</li>
+                  <li>Run the <code className="bg-blue-100 px-1 rounded">email-summaries-migration.sql</code> file</li>
+                  <li>This will create the required database tables</li>
+                  <li>Refresh this page to start using email summaries</li>
+                </ol>
+              </div>
+            )}
+            <div className="flex gap-2 mt-3">
+              <Button 
+                onClick={() => loadSummaries(0)} 
+                variant="outline" 
+                size="sm"
+              >
+                Try Again
+              </Button>
+              {isMigrationError && (
+                <Button 
+                  onClick={() => window.open('https://app.supabase.com', '_blank')} 
+                  variant="default"
+                  size="sm"
+                >
+                  Open Supabase
+                </Button>
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>
