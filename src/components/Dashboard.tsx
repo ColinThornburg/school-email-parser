@@ -94,12 +94,19 @@ export default function Dashboard() {
         console.log('Available email sources:', emailSources?.map(s => ({ email: s.email, hasTag: !!s.tags })));
         
         const matchingSource = emailSources?.find(source => {
-          const exactMatch = source.email === senderEmail;
-          const domainMatch = source.email.startsWith('@') && senderEmail.includes(source.email.substring(1));
-          const domainMatch2 = senderEmail.includes('@') && source.email.includes('@') && 
-                               senderEmail.split('@')[1] === source.email.split('@')[1];
+          // Extract email from display name format: "Name <email@domain.com>"
+          const extractEmailFromDisplayName = (emailStr: string) => {
+            const match = emailStr.match(/<([^>]+)>/);
+            return match ? match[1] : emailStr;
+          };
           
-          console.log(`Checking ${source.email} vs ${senderEmail}:`, {
+          const cleanSenderEmail = extractEmailFromDisplayName(senderEmail);
+          const exactMatch = source.email === cleanSenderEmail;
+          const domainMatch = source.email.startsWith('@') && cleanSenderEmail.includes(source.email.substring(1));
+          const domainMatch2 = cleanSenderEmail.includes('@') && source.email.includes('@') && 
+                               cleanSenderEmail.split('@')[1] === source.email.split('@')[1];
+          
+          console.log(`Checking ${source.email} vs ${senderEmail} (cleaned: ${cleanSenderEmail}):`, {
             exactMatch,
             domainMatch,
             domainMatch2,
