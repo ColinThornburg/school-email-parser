@@ -113,6 +113,9 @@ export default function Dashboard() {
         const tag = matchingSource?.tags; // With explicit foreign key, this should be an object, not array
         console.log('Final tag:', tag);
         
+        // Handle both array and object cases for tags
+        const tagData = Array.isArray(tag) ? tag[0] : tag;
+        
         return {
           ...event,
           eventDate: new Date(event.event_date + 'T00:00:00'), // Add time to avoid timezone issues
@@ -124,13 +127,13 @@ export default function Dashboard() {
           emailSubject: event.processed_emails.subject,
           emailSentDate: new Date(event.processed_emails.sent_date),
           emailBodyPreview: event.processed_emails.email_body_preview,
-          tag: tag ? {
-            id: tag.id,
+          tag: tagData ? {
+            id: tagData.id,
             userId: userId,
-            name: tag.name,
-            type: tag.type,
-            color: tag.color,
-            emoji: tag.emoji,
+            name: tagData.name,
+            type: tagData.type,
+            color: tagData.color,
+            emoji: tagData.emoji,
             createdAt: new Date(),
             updatedAt: new Date()
           } : undefined
