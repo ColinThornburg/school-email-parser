@@ -545,64 +545,141 @@ export default function Dashboard() {
                 />
               ) : view === 'list' ? (
                 <div className="space-y-4">
-                  {events.length === 0 ? (
-                    <div className="text-center py-16 text-gray-500">
-                      <Mail className="h-20 w-20 mx-auto mb-6 text-gray-300" />
-                      <h3 className="text-lg font-medium text-gray-700 mb-2">No events found</h3>
-                      <p className="text-sm text-gray-500">
-                        Configure email sources and sync your emails to get started
-                      </p>
-                    </div>
-                  ) : (
-                    events.map((event) => (
-                      <div
-                        key={event.id}
-                        className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
-                        onClick={() => handleEventClick(event)}
-                      >
-                        <div className="flex-1">
-                          <h3 className="font-semibold">{event.eventTitle}</h3>
-                          <p className="text-sm text-muted-foreground">
-                            {formatDate(event.eventDate)}
-                            {event.eventTime && ` at ${event.eventTime}`}
+                  {(() => {
+                    // Filter events to start from 2 days back from current date
+                    const today = new Date()
+                    const twoDaysBack = new Date(today)
+                    twoDaysBack.setDate(today.getDate() - 2)
+                    
+                    const filteredEvents = events.filter(event => {
+                      const eventDate = new Date(event.eventDate)
+                      return eventDate >= twoDaysBack
+                    }).sort((a, b) => new Date(a.eventDate).getTime() - new Date(b.eventDate).getTime())
+
+                    if (filteredEvents.length === 0) {
+                      return (
+                        <div className="text-center py-16 text-gray-500">
+                          <Mail className="h-20 w-20 mx-auto mb-6 text-gray-300" />
+                          <h3 className="text-lg font-medium text-gray-700 mb-2">No upcoming events</h3>
+                          <p className="text-sm text-gray-500">
+                            No events found from 2 days ago onwards. Configure email sources and sync your emails to get started.
                           </p>
-                          {event.senderName && (
-                            <p className="text-xs text-muted-foreground mt-1">
-                              From: {event.senderName}
-                            </p>
-                          )}
-                          {event.description && (
-                            <p className="text-sm mt-1">{event.description}</p>
-                          )}
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`px-2 py-1 rounded-full text-xs ${
-                              event.confidenceScore >= 0.9
-                                ? 'bg-green-100 text-green-800'
-                                : event.confidenceScore >= 0.8
-                                ? 'bg-yellow-100 text-yellow-800'
-                                : 'bg-red-100 text-red-800'
-                            }`}
-                          >
-                            {Math.round(event.confidenceScore * 100)}%
-                          </span>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={(e) => confirmDeleteEvent(event, e)}
-                            className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
-                            title="Delete event"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                          {event.isVerified && (
-                            <CheckCircle className="h-4 w-4 text-green-600" />
-                          )}
+                      )
+                    }
+
+                    // Group events by date
+                    const eventsByDate = filteredEvents.reduce((acc, event) => {
+                      const dateKey = new Date(event.eventDate).toDateString()
+                      if (!acc[dateKey]) {
+                        acc[dateKey] = []
+                      }
+                      acc[dateKey].push(event)
+                      return acc
+                    }, {} as Record<string, typeof filteredEvents>)
+
+                    return Object.entries(eventsByDate).map(([dateKey, dayEvents]) => {
+                      const date = new Date(dateKey)
+                      const isToday = date.toDateString() === today.toDateString()
+                      const isYesterday = date.toDateString() === new Date(today.getTime() - 24 * 60 * 60 * 1000).toDateString()
+                      const isTomorrow = date.toDateString() === new Date(today.getTime() + 24 * 60 * 60 * 1000).toDateString()
+                      
+                      let dateLabel = formatDate(date)
+                      if (isToday) dateLabel = 'Today'
+                      else if (isYesterday) dateLabel = 'Yesterday'  
+                      else if (isTomorrow) dateLabel = 'Tomorrow'
+
+                      return (
+                        <div key={dateKey} className="space-y-3">
+                          {/* Date Header */}
+                          <div className={`sticky top-0 z-10 py-2 px-3 rounded-lg ${
+                            isToday 
+                              ? 'bg-blue-100 border border-blue-200' 
+                              : 'bg-gray-100 border border-gray-200'
+                          }`}>
+                            <h3 className={`font-medium text-sm ${
+                              isToday ? 'text-blue-900' : 'text-gray-700'
+                            }`}>
+                              {dateLabel} {isToday && '📅'}
+                              <span className="ml-2 text-xs opacity-75">
+                                ({dayEvents.length} event{dayEvents.length !== 1 ? 's' : ''})
+                              </span>
+                            </h3>
+                          </div>
+                          
+                          {/* Events for this date */}
+                          <div className="space-y-2 ml-2">
+                            {dayEvents.map((event) => {
+                              const eventIsToday = new Date(event.eventDate).toDateString() === today.toDateString()
+                              
+                              return (
+                                <div
+                                  key={event.id}
+                                  className={`flex items-center justify-between p-4 border rounded-lg cursor-pointer transition-colors ${
+                                    eventIsToday 
+                                      ? 'border-blue-300 bg-blue-50 hover:bg-blue-100 ring-1 ring-blue-200' 
+                                      : 'border-gray-200 hover:bg-gray-50'
+                                  }`}
+                                  onClick={() => handleEventClick(event)}
+                                >
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2">
+                                      <h3 className={`font-semibold ${eventIsToday ? 'text-blue-900' : ''}`}>
+                                        {event.eventTitle}
+                                      </h3>
+                                      {eventIsToday && (
+                                        <span className="px-2 py-1 bg-blue-600 text-white text-xs rounded-full font-medium">
+                                          TODAY
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className={`text-sm ${eventIsToday ? 'text-blue-700' : 'text-muted-foreground'}`}>
+                                      {event.eventTime && `${event.eventTime}`}
+                                    </p>
+                                    {event.senderName && (
+                                      <p className={`text-xs mt-1 ${eventIsToday ? 'text-blue-600' : 'text-muted-foreground'}`}>
+                                        From: {event.senderName}
+                                      </p>
+                                    )}
+                                    {event.description && (
+                                      <p className={`text-sm mt-1 ${eventIsToday ? 'text-blue-800' : ''}`}>
+                                        {event.description}
+                                      </p>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span
+                                      className={`px-2 py-1 rounded-full text-xs ${
+                                        event.confidenceScore >= 0.9
+                                          ? 'bg-green-100 text-green-800'
+                                          : event.confidenceScore >= 0.8
+                                          ? 'bg-yellow-100 text-yellow-800'
+                                          : 'bg-red-100 text-red-800'
+                                      }`}
+                                    >
+                                      {Math.round(event.confidenceScore * 100)}%
+                                    </span>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={(e) => confirmDeleteEvent(event, e)}
+                                      className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                      title="Delete event"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                    {event.isVerified && (
+                                      <CheckCircle className="h-4 w-4 text-green-600" />
+                                    )}
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
                         </div>
-                      </div>
-                    ))
-                  )}
+                      )
+                    })
+                  })()}
                 </div>
               ) : view === 'summaries' ? (
                 <EmailSummaries user={user} />
