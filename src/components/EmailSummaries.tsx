@@ -210,7 +210,7 @@ export default function EmailSummaries({ user: propUser }: Props) {
                       {summary.summary.importantDates.slice(0, expandedSummary === summary.id ? undefined : 2).map((dateInfo, index) => (
                         <div key={index} className="bg-blue-50 p-3 rounded-lg border-l-4 border-blue-400">
                           <div className="font-medium text-sm text-blue-900">
-                            {formatDate(new Date(dateInfo.date))} - {dateInfo.description}
+                            {formatDate(dateInfo.date)} - {dateInfo.description}
                           </div>
                           <div className="text-xs text-blue-700 italic mt-1">
                             "{dateInfo.originalText}"
