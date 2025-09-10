@@ -195,10 +195,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Calculate dashboard summary from processed emails
     console.log('Calculating summary statistics from processed emails...');
     
-    // Get all processed emails for summary calculation
+    // Get all processed emails with summary data for comprehensive cost calculation
     const { data: allProcessedEmails } = await supabase
       .from('processed_emails')
-      .select('*')
+      .select(`
+        *,
+        email_summaries (
+          processing_cost,
+          processing_tokens,
+          llm_provider,
+          model_name
+        )
+      `)
       .eq('user_id', userId);
 
     const thirtyDaysAgo = new Date();
@@ -211,9 +219,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const totalEmails = allProcessedEmails?.length || 0;
     const totalEvents = allProcessedEmails?.reduce((sum, email) => sum + (email.events_extracted_count || 0), 0) || 0;
     const totalCost = allProcessedEmails?.reduce((sum, email) => {
-      // Handle missing processing_cost column
-      const cost = email.processing_cost || (email as any).processing_cost || 0;
-      return sum + parseFloat(String(cost));
+      // Handle missing processing_cost column - email extraction cost
+      const extractionCost = email.processing_cost || (email as any).processing_cost || 0;
+      
+      // Add email summary cost if it exists
+      const summaryCost = email.email_summaries?.[0]?.processing_cost || 0;
+      
+      return sum + parseFloat(String(extractionCost)) + parseFloat(String(summaryCost));
     }, 0) || 0;
     const successfulEmails = allProcessedEmails?.filter(email => {
       // Handle missing extraction_successful column - assume success if events were extracted
@@ -222,9 +234,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return successful;
     }).length || 0;
 
-    // Create provider breakdown from processed emails
+    // Create provider breakdown from processed emails (including summaries)
     const providerBreakdown: { [key: string]: any } = {};
     allProcessedEmails?.forEach(email => {
+      // Handle email extraction providers
       if (email.llm_providers_used) {
         const providers = email.llm_providers_used.split(', ');
         providers.forEach(provider => {
@@ -240,6 +253,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           providerBreakdown[provider].cost += parseFloat(email.processing_cost || '0');
           providerBreakdown[provider].count++;
         });
+      }
+      
+      // Handle email summary providers
+      if (email.email_summaries?.[0]) {
+        const summaryData = email.email_summaries[0];
+        const provider = summaryData.llm_provider || 'openai';
+        
+        if (!providerBreakdown[provider]) {
+          providerBreakdown[provider] = {
+            usage: 0,
+            cost: 0,
+            successRate: 0,
+            count: 0
+          };
+        }
+        
+        providerBreakdown[provider].usage += summaryData.processing_tokens || 0;
+        providerBreakdown[provider].cost += parseFloat(summaryData.processing_cost || '0');
+        providerBreakdown[provider].count++;
       }
     });
 
@@ -264,8 +296,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         emails: recentEmails.length,
         events: recentEmails.reduce((sum, email) => sum + (email.events_extracted_count || 0), 0),
         cost: recentEmails.reduce((sum, email) => {
-          const cost = email.processing_cost || (email as any).processing_cost || 0;
-          return sum + parseFloat(String(cost));
+          const extractionCost = email.processing_cost || (email as any).processing_cost || 0;
+          const summaryCost = email.email_summaries?.[0]?.processing_cost || 0;
+          return sum + parseFloat(String(extractionCost)) + parseFloat(String(summaryCost));
         }, 0)
       },
       providerBreakdown

@@ -200,6 +200,7 @@ export default function ProcessingDashboard({ user: propUser }: Props) {
       case 'fallback': return 'bg-yellow-100 text-yellow-800';
       case 'email_retrieval': return 'bg-purple-100 text-purple-800';
       case 'email_analysis': return 'bg-indigo-100 text-indigo-800';
+      case 'email_summary': return 'bg-cyan-100 text-cyan-800';
       case 'processed': return 'bg-emerald-100 text-emerald-800';
       default: return 'bg-gray-100 text-gray-800';
     }

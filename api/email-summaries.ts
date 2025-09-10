@@ -376,6 +376,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             continue;
           }
 
+          // Log summary generation to processing_history for dashboard tracking
+          try {
+            const processingStartTime = Date.now();
+            const { error: historyError } = await supabase
+              .from('processing_history')
+              .insert({
+                user_id: userId,
+                session_id: null, // Summary generation is independent of sync sessions
+                email_id: emailData.email_id,
+                llm_provider: 'openai',
+                model_name: 'gpt-4o-mini',
+                processing_step: 'email_summary',
+                processing_time: 2000, // Estimated time for summary generation (2 seconds)
+                input_tokens: Math.ceil(estimatedTokens * 0.7), // Estimated 70% input
+                output_tokens: Math.ceil(estimatedTokens * 0.3), // Estimated 30% output
+                total_tokens: estimatedTokens,
+                cost: estimatedCost,
+                success_status: true,
+                confidence_score: summary.confidence,
+                retry_count: 0,
+                error_message: null
+              });
+
+            if (historyError) {
+              console.error(`Failed to log summary generation to processing_history for email ${emailData.email_id}:`, historyError);
+              // Don't fail the entire operation if history logging fails
+            } else {
+              console.log(`✅ Logged email summary generation to processing_history: ${emailData.subject}`);
+            }
+          } catch (historyLogError) {
+            console.error('Exception logging summary to processing_history:', historyLogError);
+            // Continue processing even if logging fails
+          }
+
           console.log(`Successfully generated and stored summary for email ${emailData.email_id}`);
 
           newSummaries.push({
