@@ -89,15 +89,28 @@ export default function Dashboard() {
       const formattedEvents = data.map(event => {
         // Find matching email source based on sender email
         const senderEmail = event.processed_emails.sender_email;
+        console.log('Processing event with sender:', senderEmail);
+        console.log('Available email sources:', emailSources?.map(s => ({ email: s.email, hasTag: !!s.tags })));
+        
         const matchingSource = emailSources?.find(source => {
-          // Check for exact email match or domain match
-          return source.email === senderEmail || 
-                 (source.email.startsWith('@') && senderEmail.includes(source.email.substring(1))) ||
-                 (senderEmail.includes('@') && source.email.includes('@') && 
-                  senderEmail.split('@')[1] === source.email.split('@')[1])
+          const exactMatch = source.email === senderEmail;
+          const domainMatch = source.email.startsWith('@') && senderEmail.includes(source.email.substring(1));
+          const domainMatch2 = senderEmail.includes('@') && source.email.includes('@') && 
+                               senderEmail.split('@')[1] === source.email.split('@')[1];
+          
+          console.log(`Checking ${source.email} vs ${senderEmail}:`, {
+            exactMatch,
+            domainMatch,
+            domainMatch2,
+            hasTag: !!source.tags
+          });
+          
+          return exactMatch || domainMatch || domainMatch2;
         });
         
+        console.log('Matching source found:', matchingSource);
         const tag = matchingSource?.tags?.[0]; // Get first tag since it's an array
+        console.log('Final tag:', tag);
         
         return {
           ...event,
