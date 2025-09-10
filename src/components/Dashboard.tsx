@@ -69,7 +69,8 @@ export default function Dashboard() {
         .from('email_sources')
         .select(`
           email,
-          tags(
+          tag_id,
+          tags!email_sources_tag_id_fkey(
             id,
             name,
             type,
@@ -84,7 +85,7 @@ export default function Dashboard() {
         console.error('Error fetching email sources:', sourcesError);
       }
       
-      console.log('Fetched email sources:', emailSources);
+      console.log('Fetched email sources with explicit join:', emailSources);
 
       const formattedEvents = data.map(event => {
         // Find matching email source based on sender email
@@ -109,7 +110,7 @@ export default function Dashboard() {
         });
         
         console.log('Matching source found:', matchingSource);
-        const tag = matchingSource?.tags?.[0]; // Get first tag since it's an array
+        const tag = matchingSource?.tags; // With explicit foreign key, this should be an object, not array
         console.log('Final tag:', tag);
         
         return {
