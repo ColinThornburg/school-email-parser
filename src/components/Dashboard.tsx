@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
 import Calendar from './ui/calendar'
-import { Calendar as CalendarIcon, Settings, Mail, Clock, CheckCircle, LogIn, RefreshCw, X, BarChart3, Trash2, FileText } from 'lucide-react'
+import { Calendar as CalendarIcon, Settings, Mail, Clock, CheckCircle, LogIn, RefreshCw, X, BarChart3, Trash2, FileText, Menu, TrendingUp, ChevronDown, ChevronUp } from 'lucide-react'
 import { ExtractedDate } from '../types'
 import { formatDate } from '../lib/utils'
 import { createGmailService } from '../lib/gmail'
@@ -22,6 +22,8 @@ export default function Dashboard() {
   const [selectedEvent, setSelectedEvent] = useState<ExtractedDate | null>(null)
   const [eventToDelete, setEventToDelete] = useState<ExtractedDate | null>(null)
   const [lookbackDays, setLookbackDays] = useState(7)
+  const [showStats, setShowStats] = useState(false)
+  const [showQuickActions, setShowQuickActions] = useState(false)
 
   useEffect(() => {
     // Check if user is authenticated
@@ -306,151 +308,237 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold">School Calendar</h1>
-          <p className="text-muted-foreground">
-            Track important dates from your school emails
-          </p>
-          {user && (
-            <p className="text-sm text-gray-500 mt-1">
-              Connected: {user.email}
-            </p>
-          )}
-        </div>
-        <div className="flex gap-2">
-          <Button
-            variant={view === 'calendar' ? 'default' : 'outline'}
-            onClick={() => setView('calendar')}
-          >
-            <CalendarIcon className="h-4 w-4 mr-2" />
-            Calendar
-          </Button>
-          <Button
-            variant={view === 'list' ? 'default' : 'outline'}
-            onClick={() => setView('list')}
-          >
-            <Mail className="h-4 w-4 mr-2" />
-            List
-          </Button>
-          <Button
-            variant={view === 'summaries' ? 'default' : 'outline'}
-            onClick={() => setView('summaries')}
-          >
-            <FileText className="h-4 w-4 mr-2" />
-            Summaries
-          </Button>
-          <Button
-            variant={view === 'processing' ? 'default' : 'outline'}
-            onClick={() => setView('processing')}
-          >
-            <BarChart3 className="h-4 w-4 mr-2" />
-            Processing
-          </Button>
-          <Button 
-            variant="outline" 
-            onClick={() => setShowSettings(!showSettings)}
-          >
-            <Settings className="h-4 w-4 mr-2" />
-            Settings
-          </Button>
-          <Button onClick={handleLogout} variant="outline">
-            Logout
-          </Button>
-        </div>
-      </div>
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Events</CardTitle>
-            <CalendarIcon className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{events.length}</div>
-            <p className="text-xs text-muted-foreground">
-              Extracted from emails
-            </p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Today</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{events.filter(event => {
-              const today = new Date()
-              const eventDate = new Date(event.eventDate)
-              return eventDate.toDateString() === today.toDateString()
-            }).length}</div>
-            <p className="text-xs text-muted-foreground">
-              Events scheduled
-            </p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Upcoming</CardTitle>
-            <Mail className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{events.filter(event => new Date(event.eventDate) >= new Date()).length}</div>
-            <p className="text-xs text-muted-foreground">
-              Future events
-            </p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Verified</CardTitle>
-            <CheckCircle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {events.filter(e => e.isVerified).length}
+    <div className="min-h-screen bg-gray-50">
+      {/* Simplified Header */}
+      <div className="bg-white border-b border-gray-200 px-6 py-4">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold text-gray-900">School Calendar</h1>
+            {user && (
+              <p className="text-sm text-gray-600 mt-1">
+                {user.email}
+              </p>
+            )}
+          </div>
+          
+          <div className="flex items-center gap-3">
+            {/* Stats Toggle */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowStats(!showStats)}
+              className="text-gray-600 hover:text-gray-900"
+            >
+              <TrendingUp className="h-4 w-4 mr-2" />
+              Stats
+              {showStats ? <ChevronUp className="h-4 w-4 ml-1" /> : <ChevronDown className="h-4 w-4 ml-1" />}
+            </Button>
+            
+            {/* Quick Actions Toggle */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowQuickActions(!showQuickActions)}
+              className="text-gray-600 hover:text-gray-900"
+            >
+              <Menu className="h-4 w-4 mr-2" />
+              Actions
+              {showQuickActions ? <ChevronUp className="h-4 w-4 ml-1" /> : <ChevronDown className="h-4 w-4 ml-1" />}
+            </Button>
+            
+            {/* View Selector */}
+            <div className="flex bg-gray-100 rounded-lg p-1">
+              <Button
+                variant={view === 'calendar' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setView('calendar')}
+                className="h-8"
+              >
+                <CalendarIcon className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={view === 'list' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setView('list')}
+                className="h-8"
+              >
+                <Mail className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={view === 'summaries' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setView('summaries')}
+                className="h-8"
+              >
+                <FileText className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={view === 'processing' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setView('processing')}
+                className="h-8"
+              >
+                <BarChart3 className="h-4 w-4" />
+              </Button>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Confirmed events
-            </p>
-          </CardContent>
-        </Card>
+            
+            <Button onClick={handleLogout} variant="outline" size="sm">
+              Logout
+            </Button>
+          </div>
+        </div>
       </div>
 
-      {/* Settings Panel */}
-      {showSettings && (
-        <div className="mb-6">
-          <EmailSourceManager 
-            userId={user.id} 
-            onSourcesUpdated={() => {
-              // Optionally refresh events after sources are updated
-              fetchEvents(user.id)
-            }}
-          />
-        </div>
-      )}
+      <div className="max-w-7xl mx-auto p-6">
 
-      {/* Main Content */}
-      <div className="grid grid-cols-1 gap-6">
-        {/* Calendar/List View - Now takes full width */}
-        <div className="w-full">
-          <Card>
-            <CardHeader>
-              <CardTitle>
-                {view === 'calendar' ? 'Weekly Calendar View' : 
-                 view === 'list' ? 'Event List' : 
-                 view === 'summaries' ? 'Email Summaries' :
-                 'Processing Dashboard'}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {view === 'calendar' ? (
+        {/* Collapsible Stats Cards */}
+        {showStats && (
+          <div className="mb-6">
+            <Card className="bg-white shadow-sm">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <TrendingUp className="h-5 w-5" />
+                  Statistics Overview
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="text-center p-3 bg-blue-50 rounded-lg">
+                    <div className="text-2xl font-bold text-blue-700">{events.length}</div>
+                    <p className="text-sm text-blue-600">Total Events</p>
+                  </div>
+                  <div className="text-center p-3 bg-green-50 rounded-lg">
+                    <div className="text-2xl font-bold text-green-700">{events.filter(event => {
+                      const today = new Date()
+                      const eventDate = new Date(event.eventDate)
+                      return eventDate.toDateString() === today.toDateString()
+                    }).length}</div>
+                    <p className="text-sm text-green-600">Today</p>
+                  </div>
+                  <div className="text-center p-3 bg-orange-50 rounded-lg">
+                    <div className="text-2xl font-bold text-orange-700">{events.filter(event => new Date(event.eventDate) >= new Date()).length}</div>
+                    <p className="text-sm text-orange-600">Upcoming</p>
+                  </div>
+                  <div className="text-center p-3 bg-purple-50 rounded-lg">
+                    <div className="text-2xl font-bold text-purple-700">
+                      {events.filter(e => e.isVerified).length}
+                    </div>
+                    <p className="text-sm text-purple-600">Verified</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Collapsible Quick Actions */}
+        {showQuickActions && (
+          <div className="mb-6">
+            <Card className="bg-white shadow-sm">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Menu className="h-5 w-5" />
+                  Quick Actions
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Lookback Period Selector */}
+                <div className="p-3 bg-gray-50 rounded-lg border">
+                  <div className="flex items-center gap-4">
+                    <label htmlFor="lookback-select" className="text-sm font-medium text-gray-700">
+                      Email Lookback Period:
+                    </label>
+                    <select
+                      id="lookback-select"
+                      value={lookbackDays}
+                      onChange={(e) => setLookbackDays(parseInt(e.target.value))}
+                      className="px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      disabled={isSyncing}
+                    >
+                      <option value={1}>1 day</option>
+                      <option value={3}>3 days</option>
+                      <option value={7}>7 days (1 week)</option>
+                      <option value={14}>14 days (2 weeks)</option>
+                      <option value={21}>21 days (3 weeks)</option>
+                      <option value={30}>30 days (1 month)</option>
+                    </select>
+                    <span className="text-xs text-gray-500">
+                      Search for emails received in the last {lookbackDays} day{lookbackDays !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <Button 
+                    className="w-full" 
+                    variant="outline" 
+                    onClick={handleSyncEmails}
+                    disabled={isSyncing}
+                  >
+                    {isSyncing ? (
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Mail className="h-4 w-4 mr-2" />
+                    )}
+                    {isSyncing ? 'Syncing...' : 'Sync Emails'}
+                  </Button>
+                  <Button 
+                    className="w-full" 
+                    variant="outline"
+                    onClick={handleReprocessEmails}
+                    disabled={isSyncing}
+                  >
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Reprocess Emails
+                  </Button>
+                  <Button 
+                    className="w-full" 
+                    variant="outline"
+                    onClick={handleReAuth}
+                    disabled={isSyncing}
+                  >
+                    <LogIn className="h-4 w-4 mr-2" />
+                    Re-authenticate Gmail
+                  </Button>
+                  <Button 
+                    className="w-full" 
+                    variant="outline"
+                    onClick={() => setShowSettings(!showSettings)}
+                  >
+                    <Settings className="h-4 w-4 mr-2" />
+                    {showSettings ? 'Hide Settings' : 'Manage Sources'}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Settings Panel */}
+        {showSettings && (
+          <div className="mb-6">
+            <EmailSourceManager 
+              userId={user.id} 
+              onSourcesUpdated={() => {
+                // Optionally refresh events after sources are updated
+                fetchEvents(user.id)
+              }}
+            />
+          </div>
+        )}
+
+        {/* Main Content - Clean and spacious */}
+        <Card className="bg-white shadow-sm">
+          <CardHeader className="border-b border-gray-100 bg-gray-50">
+            <CardTitle className="text-xl text-gray-800">
+              {view === 'calendar' ? 'Calendar View' : 
+               view === 'list' ? 'Event List' : 
+               view === 'summaries' ? 'Email Summaries' :
+               'Processing Dashboard'}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-6">
+            {view === 'calendar' ? (
                 <Calendar 
                   events={events} 
                   onEventClick={handleEventClick}
@@ -458,10 +546,10 @@ export default function Dashboard() {
               ) : view === 'list' ? (
                 <div className="space-y-4">
                   {events.length === 0 ? (
-                    <div className="text-center py-12 text-muted-foreground">
-                      <Mail className="h-16 w-16 mx-auto mb-4" />
-                      <p>No events found</p>
-                      <p className="text-sm">
+                    <div className="text-center py-16 text-gray-500">
+                      <Mail className="h-20 w-20 mx-auto mb-6 text-gray-300" />
+                      <h3 className="text-lg font-medium text-gray-700 mb-2">No events found</h3>
+                      <p className="text-sm text-gray-500">
                         Configure email sources and sync your emails to get started
                       </p>
                     </div>
@@ -469,7 +557,7 @@ export default function Dashboard() {
                     events.map((event) => (
                       <div
                         key={event.id}
-                        className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 cursor-pointer"
+                        className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
                         onClick={() => handleEventClick(event)}
                       >
                         <div className="flex-1">
@@ -521,83 +609,6 @@ export default function Dashboard() {
               ) : (
                 <ProcessingDashboard user={user} />
               )}
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Quick Actions - Moved to bottom as a horizontal row */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Quick Actions</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {/* Lookback Period Selector */}
-            <div className="mb-4 p-3 bg-gray-50 rounded-lg border">
-              <div className="flex items-center gap-4">
-                <label htmlFor="lookback-select" className="text-sm font-medium text-gray-700">
-                  Email Lookback Period:
-                </label>
-                <select
-                  id="lookback-select"
-                  value={lookbackDays}
-                  onChange={(e) => setLookbackDays(parseInt(e.target.value))}
-                  className="px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  disabled={isSyncing}
-                >
-                  <option value={1}>1 day</option>
-                  <option value={3}>3 days</option>
-                  <option value={7}>7 days (1 week)</option>
-                  <option value={14}>14 days (2 weeks)</option>
-                  <option value={21}>21 days (3 weeks)</option>
-                  <option value={30}>30 days (1 month)</option>
-                </select>
-                <span className="text-xs text-gray-500">
-                  Search for emails received in the last {lookbackDays} day{lookbackDays !== 1 ? 's' : ''}
-                </span>
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <Button 
-                className="w-full" 
-                variant="outline" 
-                onClick={handleSyncEmails}
-                disabled={isSyncing}
-              >
-                {isSyncing ? (
-                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <Mail className="h-4 w-4 mr-2" />
-                )}
-                {isSyncing ? 'Syncing...' : 'Sync Emails'}
-              </Button>
-              <Button 
-                className="w-full" 
-                variant="outline"
-                onClick={handleReprocessEmails}
-                disabled={isSyncing}
-              >
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Reprocess Emails
-              </Button>
-              <Button 
-                className="w-full" 
-                variant="outline"
-                onClick={handleReAuth}
-                disabled={isSyncing}
-              >
-                <LogIn className="h-4 w-4 mr-2" />
-                Re-authenticate Gmail
-              </Button>
-              <Button 
-                className="w-full" 
-                variant="outline"
-                onClick={() => setShowSettings(!showSettings)}
-              >
-                <Settings className="h-4 w-4 mr-2" />
-                {showSettings ? 'Hide Settings' : 'Manage Sources'}
-              </Button>
-            </div>
           </CardContent>
         </Card>
       </div>

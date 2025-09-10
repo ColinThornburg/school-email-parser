@@ -30,18 +30,38 @@ interface SummaryProvider {
   summarizeEmail(emailContent: EmailContent): Promise<SummaryResponse>;
 }
 
-// Utility functions
+interface CachedSummary {
+  id: string;
+  emailId: string;
+  userId: string;
+  subject: string;
+  senderEmail: string;
+  sentDate: Date;
+  summary: SummaryResponse;
+  confidence: number;
+  generatedAt: Date;
+  emailBodyPreview?: string;
+}
+
+interface EmailNeedingSummary {
+  email_id: string;
+  subject: string;
+  sender_email: string;
+  sent_date: string;
+  email_body_preview: string;
+  content_hash: string;
+}
+
+// Utility functions (same as original)
 function extractEmailText(body: string): string {
   if (!body) return '';
   
-  // Check if content appears to be HTML (contains HTML tags)
   const hasHtmlTags = /<[^>]+>/.test(body);
   
   if (hasHtmlTags) {
     return htmlToText(body);
   }
   
-  // For plain text, just clean up whitespace
   return body
     .replace(/\r\n/g, '\n')
     .replace(/\r/g, '\n')
@@ -54,61 +74,38 @@ function htmlToText(html: string): string {
   if (!html) return '';
   
   let text = html;
-  
-  // Replace common block elements with line breaks
   text = text.replace(/<\/?(div|p|br|h[1-6]|li|tr|td|th)[^>]*>/gi, '\n');
-  
-  // Replace list items with bullet points
   text = text.replace(/<li[^>]*>/gi, '\n• ');
-  
-  // Remove all other HTML tags
   text = text.replace(/<[^>]*>/g, '');
   
-  // Decode common HTML entities
   const entities: { [key: string]: string } = {
-    '&amp;': '&',
-    '&lt;': '<',
-    '&gt;': '>',
-    '&quot;': '"',
-    '&#39;': "'",
-    '&apos;': "'",
-    '&nbsp;': ' ',
-    '&ndash;': '–',
-    '&mdash;': '—',
-    '&hellip;': '…',
-    '&copy;': '©',
-    '&reg;': '®',
-    '&trade;': '™'
+    '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'",
+    '&apos;': "'", '&nbsp;': ' ', '&ndash;': '–', '&mdash;': '—',
+    '&hellip;': '…', '&copy;': '©', '&reg;': '®', '&trade;': '™'
   };
   
-  // Replace HTML entities
   for (const [entity, replacement] of Object.entries(entities)) {
     text = text.replace(new RegExp(entity, 'gi'), replacement);
   }
   
-  // Handle numeric HTML entities (like &#160; for non-breaking space)
   text = text.replace(/&#(\d+);/g, (_match, dec) => {
     return String.fromCharCode(parseInt(dec, 10));
   });
   
-  // Handle hex HTML entities (like &#x00A0; for non-breaking space)
   text = text.replace(/&#x([0-9A-F]+);/gi, (_match, hex) => {
     return String.fromCharCode(parseInt(hex, 16));
   });
   
-  // Clean up whitespace
-  text = text
-    .replace(/\r\n/g, '\n') // Normalize line endings
-    .replace(/\r/g, '\n') // Normalize line endings
-    .replace(/\n{3,}/g, '\n\n') // Replace multiple line breaks with double line breaks
-    .replace(/[ \t]+/g, ' ') // Replace multiple spaces/tabs with single space
-    .replace(/[ \t]*\n[ \t]*/g, '\n') // Remove spaces around line breaks
-    .trim(); // Remove leading/trailing whitespace
-  
-  return text;
+  return text
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/[ \t]*\n[ \t]*/g, '\n')
+    .trim();
 }
 
-// OpenAI Service for summarization
+// OpenAI Service (same as original)
 class OpenAIService implements SummaryProvider {
   private apiKey: string;
   private model: string;
@@ -227,20 +224,45 @@ function createSummaryProvider(provider: 'openai' = 'openai'): SummaryProvider {
   return new OpenAIService(openaiKey, 'gpt-4o-mini');
 }
 
+// Calculate token usage estimate for cost tracking
+function estimateTokenUsage(emailContent: EmailContent): number {
+  const promptLength = 800; // Approximate prompt length
+  const contentLength = emailContent.subject.length + emailContent.body.length + emailContent.senderEmail.length;
+  const responseLength = 500; // Estimated response length
+  
+  // Rough token estimation (1 token ≈ 4 characters)
+  return Math.ceil((promptLength + contentLength + responseLength) / 4);
+}
+
+// Calculate cost based on token usage
+function calculateCost(tokens: number, model: string = 'gpt-4o-mini'): number {
+  // GPT-4o-mini pricing: $0.00015 per 1K input tokens, $0.0006 per 1K output tokens
+  // Simplified: assume 70% input, 30% output
+  const inputTokens = Math.ceil(tokens * 0.7);
+  const outputTokens = Math.ceil(tokens * 0.3);
+  
+  const inputCost = (inputTokens / 1000) * 0.00015;
+  const outputCost = (outputTokens / 1000) * 0.0006;
+  
+  return inputCost + outputCost;
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    const { userId, limit = 20, offset = 0 } = req.query;
+    const { userId, limit = 20, offset = 0, forceRefresh = false } = req.query;
 
     if (!userId) {
       return res.status(400).json({ error: 'User ID is required' });
     }
 
-    // Fetch processed emails with their body content
-    const { data: emails, error: emailError } = await supabase
+    console.log(`Fetching summaries for user ${userId}, limit: ${limit}, offset: ${offset}`);
+
+    // Step 1: Fetch cached summaries from database
+    const { data: cachedSummaries, error: cacheError } = await supabase
       .from('processed_emails')
       .select(`
         id,
@@ -248,7 +270,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         sender_email,
         sent_date,
         email_body_preview,
-        processing_status
+        content_hash,
+        email_summaries (
+          id,
+          summary_data,
+          confidence_score,
+          generated_at,
+          processing_cost
+        )
       `)
       .eq('user_id', userId)
       .eq('processing_status', 'completed')
@@ -256,50 +285,143 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .order('sent_date', { ascending: false })
       .range(Number(offset), Number(offset) + Number(limit) - 1);
 
-    if (emailError) {
-      console.error('Error fetching emails:', emailError);
-      return res.status(500).json({ error: 'Failed to fetch emails' });
+    if (cacheError) {
+      console.error('Error fetching cached summaries:', cacheError);
+      return res.status(500).json({ error: 'Failed to fetch cached summaries' });
     }
 
-    if (!emails || emails.length === 0) {
+    if (!cachedSummaries || cachedSummaries.length === 0) {
       return res.status(200).json({ summaries: [] });
     }
 
-    // Generate summaries for emails
-    const summaryProvider = createSummaryProvider('openai'); // Using OpenAI for summarization
-    const summaries = [];
+    console.log(`Found ${cachedSummaries.length} emails, checking cache status...`);
 
-    for (const email of emails) {
-      try {
-        const emailContent: EmailContent = {
+    // Step 2: Identify emails that need summary generation
+    const emailsNeedingSummary: EmailNeedingSummary[] = [];
+    const existingSummaries: CachedSummary[] = [];
+
+    for (const email of cachedSummaries) {
+      if (!email.email_summaries || email.email_summaries.length === 0 || forceRefresh) {
+        // No cached summary exists or force refresh requested
+        emailsNeedingSummary.push({
+          email_id: email.id,
           subject: email.subject,
-          body: extractEmailText(email.email_body_preview || ''),
-          senderEmail: email.sender_email,
-          sentDate: email.sent_date
-        };
-
-        const summary = await summaryProvider.summarizeEmail(emailContent);
-        
-        summaries.push({
-          id: email.id,
+          sender_email: email.sender_email,
+          sent_date: email.sent_date,
+          email_body_preview: email.email_body_preview,
+          content_hash: email.content_hash
+        });
+      } else {
+        // Use cached summary
+        const cachedSummary = email.email_summaries[0];
+        existingSummaries.push({
+          id: cachedSummary.id,
           emailId: email.id,
-          userId: userId,
+          userId: userId as string,
           subject: email.subject,
           senderEmail: email.sender_email,
           sentDate: new Date(email.sent_date),
-          summary: summary,
-          confidence: summary.confidence,
-          generatedAt: new Date(),
+          summary: cachedSummary.summary_data as SummaryResponse,
+          confidence: cachedSummary.confidence_score,
+          generatedAt: new Date(cachedSummary.generated_at),
           emailBodyPreview: email.email_body_preview?.substring(0, 200) + '...'
         });
-
-      } catch (summaryError) {
-        console.error(`Failed to summarize email ${email.id}:`, summaryError);
-        // Continue with other emails even if one fails
       }
     }
 
-    res.status(200).json({ summaries });
+    console.log(`Using ${existingSummaries.length} cached summaries, generating ${emailsNeedingSummary.length} new summaries`);
+
+    // Step 3: Generate summaries for emails that need them
+    const newSummaries: CachedSummary[] = [];
+    
+    if (emailsNeedingSummary.length > 0) {
+      const summaryProvider = createSummaryProvider('openai');
+
+      for (const emailData of emailsNeedingSummary) {
+        try {
+          console.log(`Generating summary for email ${emailData.email_id}...`);
+
+          const emailContent: EmailContent = {
+            subject: emailData.subject,
+            body: extractEmailText(emailData.email_body_preview || ''),
+            senderEmail: emailData.sender_email,
+            sentDate: emailData.sent_date
+          };
+
+          const summary = await summaryProvider.summarizeEmail(emailContent);
+          const estimatedTokens = estimateTokenUsage(emailContent);
+          const estimatedCost = calculateCost(estimatedTokens);
+
+          // Store the summary in database
+          const { data: storedSummary, error: storeError } = await supabase
+            .from('email_summaries')
+            .upsert({
+              email_id: emailData.email_id,
+              user_id: userId,
+              summary_data: summary,
+              confidence_score: summary.confidence,
+              llm_provider: 'openai',
+              model_name: 'gpt-4o-mini',
+              processing_tokens: estimatedTokens,
+              processing_cost: estimatedCost,
+              content_hash: emailData.content_hash
+            }, {
+              onConflict: 'email_id'
+            })
+            .select()
+            .single();
+
+          if (storeError) {
+            console.error(`Failed to store summary for email ${emailData.email_id}:`, storeError);
+            continue;
+          }
+
+          console.log(`Successfully generated and stored summary for email ${emailData.email_id}`);
+
+          newSummaries.push({
+            id: storedSummary.id,
+            emailId: emailData.email_id,
+            userId: userId as string,
+            subject: emailData.subject,
+            senderEmail: emailData.sender_email,
+            sentDate: new Date(emailData.sent_date),
+            summary: summary,
+            confidence: summary.confidence,
+            generatedAt: new Date(),
+            emailBodyPreview: emailData.email_body_preview?.substring(0, 200) + '...'
+          });
+
+        } catch (summaryError) {
+          console.error(`Failed to generate summary for email ${emailData.email_id}:`, summaryError);
+          // Continue with other emails even if one fails
+        }
+      }
+    }
+
+    // Step 4: Combine cached and new summaries, maintain order by sent_date
+    const allSummaries = [...existingSummaries, ...newSummaries]
+      .sort((a, b) => new Date(b.sentDate).getTime() - new Date(a.sentDate).getTime());
+
+    console.log(`Returning ${allSummaries.length} total summaries (${existingSummaries.length} cached + ${newSummaries.length} new)`);
+
+    // Step 5: Add usage statistics to response
+    const totalCost = newSummaries.reduce((sum, s) => sum + (calculateCost(estimateTokenUsage({
+      subject: s.subject,
+      body: s.emailBodyPreview || '',
+      senderEmail: s.senderEmail,
+      sentDate: s.sentDate.toISOString()
+    }))), 0);
+
+    res.status(200).json({ 
+      summaries: allSummaries,
+      metadata: {
+        totalReturned: allSummaries.length,
+        fromCache: existingSummaries.length,
+        newlyGenerated: newSummaries.length,
+        estimatedCost: totalCost.toFixed(6),
+        hasMore: allSummaries.length >= Number(limit)
+      }
+    });
 
   } catch (error) {
     console.error('Email summaries API error:', error);
@@ -309,3 +431,4 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 }
+
