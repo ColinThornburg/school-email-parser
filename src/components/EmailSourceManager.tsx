@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
-import { Plus, Mail, Trash2, Edit, Check, X } from 'lucide-react';
+import { Plus, Mail, Trash2, Edit, Check, X, Tag as TagIcon, User, Globe } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { EmailSource } from '../types';
+import { EmailSource, Tag } from '../types';
+import TagManager from './TagManager';
 
 interface EmailSourceManagerProps {
   userId: string;
@@ -12,23 +13,37 @@ interface EmailSourceManagerProps {
 
 export default function EmailSourceManager({ userId, onSourcesUpdated }: EmailSourceManagerProps) {
   const [sources, setSources] = useState<EmailSource[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
   const [newEmail, setNewEmail] = useState('');
+  const [newTagId, setNewTagId] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingEmail, setEditingEmail] = useState('');
+  const [editingTagId, setEditingTagId] = useState('');
   const [loading, setLoading] = useState(true);
+  const [showTagManager, setShowTagManager] = useState(false);
 
   console.log('EmailSourceManager initialized with userId:', userId);
 
   useEffect(() => {
     fetchSources();
+    fetchTags();
   }, [userId]);
 
   const fetchSources = async () => {
     try {
       const { data, error } = await supabase
         .from('email_sources')
-        .select('*')
+        .select(`
+          *,
+          tags (
+            id,
+            name,
+            type,
+            color,
+            emoji
+          )
+        `)
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
 
@@ -43,6 +58,17 @@ export default function EmailSourceManager({ userId, onSourcesUpdated }: EmailSo
         email: source.email,
         domain: source.domain,
         isActive: source.is_active,
+        tagId: source.tag_id,
+        tag: source.tags ? {
+          id: source.tags.id,
+          userId: userId,
+          name: source.tags.name,
+          type: source.tags.type,
+          color: source.tags.color,
+          emoji: source.tags.emoji,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        } : undefined,
         createdAt: new Date(source.created_at)
       }));
 
@@ -51,6 +77,35 @@ export default function EmailSourceManager({ userId, onSourcesUpdated }: EmailSo
       console.error('Error fetching sources:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchTags = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('tags')
+        .select('*')
+        .eq('user_id', userId)
+        .order('name', { ascending: true });
+
+      if (error) {
+        throw error;
+      }
+
+      const mappedTags = (data || []).map((tag: any) => ({
+        id: tag.id,
+        userId: tag.user_id,
+        name: tag.name,
+        type: tag.type,
+        color: tag.color,
+        emoji: tag.emoji,
+        createdAt: new Date(tag.created_at),
+        updatedAt: new Date(tag.updated_at)
+      }));
+
+      setTags(mappedTags);
+    } catch (error) {
+      console.error('Error fetching tags:', error);
     }
   };
 
@@ -75,9 +130,19 @@ export default function EmailSourceManager({ userId, onSourcesUpdated }: EmailSo
           user_id: userId,
           email: newEmail.trim(),
           domain: emailDomain,
-          is_active: true
+          is_active: true,
+          tag_id: newTagId || null
         })
-        .select()
+        .select(`
+          *,
+          tags (
+            id,
+            name,
+            type,
+            color,
+            emoji
+          )
+        `)
         .single();
 
       if (error) {
@@ -94,11 +159,23 @@ export default function EmailSourceManager({ userId, onSourcesUpdated }: EmailSo
         email: data.email,
         domain: data.domain,
         isActive: data.is_active,
+        tagId: data.tag_id,
+        tag: data.tags ? {
+          id: data.tags.id,
+          userId: userId,
+          name: data.tags.name,
+          type: data.tags.type,
+          color: data.tags.color,
+          emoji: data.tags.emoji,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        } : undefined,
         createdAt: new Date(data.created_at)
       };
       
       setSources([mappedSource, ...sources]);
       setNewEmail('');
+      setNewTagId('');
       setIsAdding(false);
       onSourcesUpdated?.();
     } catch (error) {
@@ -108,7 +185,7 @@ export default function EmailSourceManager({ userId, onSourcesUpdated }: EmailSo
     }
   };
 
-  const updateSource = async (id: string, email: string) => {
+  const updateSource = async (id: string, email: string, tagId?: string) => {
     try {
       const emailDomain = email.includes('@') ? email.split('@')[1] : null;
       
@@ -116,10 +193,20 @@ export default function EmailSourceManager({ userId, onSourcesUpdated }: EmailSo
         .from('email_sources')
         .update({
           email: email.trim(),
-          domain: emailDomain
+          domain: emailDomain,
+          tag_id: tagId || null
         })
         .eq('id', id)
-        .select()
+        .select(`
+          *,
+          tags (
+            id,
+            name,
+            type,
+            color,
+            emoji
+          )
+        `)
         .single();
 
       if (error) {
@@ -133,6 +220,17 @@ export default function EmailSourceManager({ userId, onSourcesUpdated }: EmailSo
         email: data.email,
         domain: data.domain,
         isActive: data.is_active,
+        tagId: data.tag_id,
+        tag: data.tags ? {
+          id: data.tags.id,
+          userId: userId,
+          name: data.tags.name,
+          type: data.tags.type,
+          color: data.tags.color,
+          emoji: data.tags.emoji,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        } : undefined,
         createdAt: new Date(data.created_at)
       };
 
@@ -141,6 +239,7 @@ export default function EmailSourceManager({ userId, onSourcesUpdated }: EmailSo
       ));
       setEditingId(null);
       setEditingEmail('');
+      setEditingTagId('');
       onSourcesUpdated?.();
     } catch (error) {
       console.error('Error updating source:', error);
@@ -200,11 +299,19 @@ export default function EmailSourceManager({ userId, onSourcesUpdated }: EmailSo
   const startEditing = (source: EmailSource) => {
     setEditingId(source.id);
     setEditingEmail(source.email);
+    setEditingTagId(source.tagId || '');
   };
 
   const cancelEditing = () => {
     setEditingId(null);
     setEditingEmail('');
+    setEditingTagId('');
+  };
+
+  const handleTagsUpdated = () => {
+    fetchTags();
+    fetchSources();
+    onSourcesUpdated?.();
   };
 
   const addSchoolEmailPresets = async () => {
@@ -274,37 +381,69 @@ export default function EmailSourceManager({ userId, onSourcesUpdated }: EmailSo
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Mail className="h-5 w-5" />
-          Email Sources
-        </CardTitle>
-        <p className="text-sm text-muted-foreground">
-          Configure which email addresses or domains to monitor for school events
-        </p>
-      </CardHeader>
+    <div className="space-y-6">
+      {/* Tag Manager */}
+      {showTagManager && (
+        <TagManager userId={userId} onTagsUpdated={handleTagsUpdated} />
+      )}
+      
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Mail className="h-5 w-5" />
+              Email Sources
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowTagManager(!showTagManager)}
+            >
+              <TagIcon className="h-4 w-4 mr-2" />
+              {showTagManager ? 'Hide' : 'Manage'} Tags
+            </Button>
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Configure which email addresses or domains to monitor for school events and assign them to kids
+          </p>
+        </CardHeader>
       <CardContent>
         <div className="space-y-4">
           {/* Add new source */}
           <div className="flex gap-2">
             {isAdding ? (
-              <>
-                <input
-                  type="email"
-                  value={newEmail}
-                  onChange={(e) => setNewEmail(e.target.value)}
-                  placeholder="teacher@school.edu or @school.edu"
-                  className="flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  autoFocus
-                />
-                <Button onClick={addSource} size="sm">
-                  <Check className="h-4 w-4" />
-                </Button>
-                <Button onClick={() => setIsAdding(false)} variant="outline" size="sm">
-                  <X className="h-4 w-4" />
-                </Button>
-              </>
+              <div className="space-y-3 w-full">
+                <div className="flex gap-2">
+                  <input
+                    type="email"
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
+                    placeholder="teacher@school.edu or @school.edu"
+                    className="flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    autoFocus
+                  />
+                  <select
+                    value={newTagId}
+                    onChange={(e) => setNewTagId(e.target.value)}
+                    className="px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[120px]"
+                  >
+                    <option value="">No tag</option>
+                    {tags.map(tag => (
+                      <option key={tag.id} value={tag.id}>
+                        {tag.emoji ? `${tag.emoji} ` : ''}{tag.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex gap-2">
+                  <Button onClick={addSource} size="sm">
+                    <Check className="h-4 w-4" />
+                  </Button>
+                  <Button onClick={() => { setIsAdding(false); setNewTagId(''); }} variant="outline" size="sm">
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
             ) : (
               <Button onClick={() => setIsAdding(true)} className="w-full">
                 <Plus className="h-4 w-4 mr-2" />
@@ -332,9 +471,12 @@ export default function EmailSourceManager({ userId, onSourcesUpdated }: EmailSo
                 key={source.id}
                 className={`flex items-center justify-between p-3 border rounded-lg transition-colors ${
                   source.isActive 
-                    ? 'bg-green-50 border-green-200' 
+                    ? source.tag
+                      ? 'border-l-4 bg-green-50 border-green-200' 
+                      : 'bg-green-50 border-green-200'
                     : 'bg-gray-50 border-gray-200'
                 }`}
+                style={source.tag && source.isActive ? { borderLeftColor: source.tag.color } : {}}
               >
                 <div className="flex items-center gap-3">
                   <div
@@ -344,18 +486,46 @@ export default function EmailSourceManager({ userId, onSourcesUpdated }: EmailSo
                   />
                   
                   {editingId === source.id ? (
-                    <input
-                      type="email"
-                      value={editingEmail}
-                      onChange={(e) => setEditingEmail(e.target.value)}
-                      className="px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      autoFocus
-                    />
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="email"
+                        value={editingEmail}
+                        onChange={(e) => setEditingEmail(e.target.value)}
+                        className="px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        autoFocus
+                      />
+                      <select
+                        value={editingTagId}
+                        onChange={(e) => setEditingTagId(e.target.value)}
+                        className="px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">No tag</option>
+                        {tags.map(tag => (
+                          <option key={tag.id} value={tag.id}>
+                            {tag.emoji ? `${tag.emoji} ` : ''}{tag.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   ) : (
-                    <div>
-                      <p className="font-medium">{source.email}</p>
-                      {source.domain && (
-                        <p className="text-xs text-gray-500">Domain: {source.domain}</p>
+                    <div className="flex items-center gap-3">
+                      <div>
+                        <p className="font-medium">{source.email}</p>
+                        {source.domain && (
+                          <p className="text-xs text-gray-500">Domain: {source.domain}</p>
+                        )}
+                      </div>
+                      {source.tag && (
+                        <div className="flex items-center gap-1 px-2 py-1 rounded-full text-xs" 
+                             style={{ backgroundColor: `${source.tag.color}20`, color: source.tag.color }}>
+                          {source.tag.type === 'kid' ? (
+                            <User className="h-3 w-3" />
+                          ) : (
+                            <Globe className="h-3 w-3" />
+                          )}
+                          {source.tag.emoji && <span>{source.tag.emoji}</span>}
+                          <span className="font-medium">{source.tag.name}</span>
+                        </div>
                       )}
                     </div>
                   )}
@@ -365,7 +535,7 @@ export default function EmailSourceManager({ userId, onSourcesUpdated }: EmailSo
                   {editingId === source.id ? (
                     <>
                       <Button
-                        onClick={() => updateSource(source.id, editingEmail)}
+                        onClick={() => updateSource(source.id, editingEmail, editingTagId)}
                         size="sm"
                         variant="outline"
                       >
@@ -419,5 +589,6 @@ export default function EmailSourceManager({ userId, onSourcesUpdated }: EmailSo
         </div>
       </CardContent>
     </Card>
+    </div>
   );
 } 

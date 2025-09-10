@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
 import Calendar from './ui/calendar'
-import { Calendar as CalendarIcon, Settings, Mail, Clock, CheckCircle, LogIn, RefreshCw, X, BarChart3, Trash2, FileText, Menu, TrendingUp, ChevronDown, ChevronUp } from 'lucide-react'
+import { Calendar as CalendarIcon, Settings, Mail, Clock, CheckCircle, LogIn, RefreshCw, X, BarChart3, Trash2, FileText, Menu, TrendingUp, ChevronDown, ChevronUp, User, Globe } from 'lucide-react'
 import { ExtractedDate } from '../types'
 import { formatDate } from '../lib/utils'
 import { createGmailService } from '../lib/gmail'
@@ -49,7 +49,17 @@ export default function Dashboard() {
             sender_email,
             subject,
             sent_date,
-            email_body_preview
+            email_body_preview,
+            email_sources(
+              tag_id,
+              tags(
+                id,
+                name,
+                type,
+                color,
+                emoji
+              )
+            )
           )
         `)
         .eq('user_id', userId)
@@ -59,18 +69,34 @@ export default function Dashboard() {
         throw error
       }
 
-      const formattedEvents = data.map(event => ({
-        ...event,
-        eventDate: new Date(event.event_date + 'T00:00:00'), // Add time to avoid timezone issues
-        eventTitle: event.event_title, // Map snake_case to camelCase
-        extractedAt: new Date(event.extracted_at),
-        confidenceScore: event.confidence_score, // Map snake_case to camelCase
-        senderEmail: event.processed_emails.sender_email,
-        senderName: event.processed_emails.sender_email.split('@')[0], // Extract name from email
-        emailSubject: event.processed_emails.subject,
-        emailSentDate: new Date(event.processed_emails.sent_date),
-        emailBodyPreview: event.processed_emails.email_body_preview
-      }))
+      const formattedEvents = data.map(event => {
+        // Find the tag from email sources
+        const emailSource = event.processed_emails?.email_sources?.[0];
+        const tag = emailSource?.tags;
+        
+        return {
+          ...event,
+          eventDate: new Date(event.event_date + 'T00:00:00'), // Add time to avoid timezone issues
+          eventTitle: event.event_title, // Map snake_case to camelCase
+          extractedAt: new Date(event.extracted_at),
+          confidenceScore: event.confidence_score, // Map snake_case to camelCase
+          senderEmail: event.processed_emails.sender_email,
+          senderName: event.processed_emails.sender_email.split('@')[0], // Extract name from email
+          emailSubject: event.processed_emails.subject,
+          emailSentDate: new Date(event.processed_emails.sent_date),
+          emailBodyPreview: event.processed_emails.email_body_preview,
+          tag: tag ? {
+            id: tag.id,
+            userId: userId,
+            name: tag.name,
+            type: tag.type,
+            color: tag.color,
+            emoji: tag.emoji,
+            createdAt: new Date(),
+            updatedAt: new Date()
+          } : undefined
+        }
+      })
 
       // Event data mapping completed successfully
 
@@ -631,6 +657,18 @@ export default function Dashboard() {
                                         <span className="px-2 py-1 bg-blue-600 text-white text-xs rounded-full font-medium">
                                           TODAY
                                         </span>
+                                      )}
+                                      {event.tag && (
+                                        <div className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium" 
+                                             style={{ backgroundColor: `${event.tag.color}20`, color: event.tag.color }}>
+                                          {event.tag.type === 'kid' ? (
+                                            <User className="h-3 w-3" />
+                                          ) : (
+                                            <Globe className="h-3 w-3" />
+                                          )}
+                                          {event.tag.emoji && <span>{event.tag.emoji}</span>}
+                                          <span>{event.tag.name}</span>
+                                        </div>
                                       )}
                                     </div>
                                     <p className={`text-sm ${eventIsToday ? 'text-blue-700' : 'text-muted-foreground'}`}>

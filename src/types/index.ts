@@ -7,12 +7,25 @@ export interface User {
   lastSyncAt?: Date
 }
 
+export interface Tag {
+  id: string
+  userId: string
+  name: string
+  type: 'kid' | 'general'
+  color: string
+  emoji?: string
+  createdAt: Date
+  updatedAt: Date
+}
+
 export interface EmailSource {
   id: string
   userId: string
   email: string
   domain?: string
   isActive: boolean
+  tagId?: string
+  tag?: Tag
   createdAt: Date
 }
 
@@ -48,6 +61,8 @@ export interface ExtractedDate {
   emailBodyPreview?: string
   // LLM reasoning for extraction
   reasoning?: string
+  // Tag information from email source
+  tag?: Tag
 }
 
 export interface ProcessingHistory {
