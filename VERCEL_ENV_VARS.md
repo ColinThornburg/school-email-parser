@@ -20,7 +20,7 @@ GMAIL_CLIENT_SECRET=your_gmail_client_secret
 ```
 OPENAI_API_KEY=your_openai_api_key
 GEMINI_API_KEY=your_google_gemini_api_key
-CLAUDE_API_KEY=your_anthropic_claude_api_key
+CLAUDE_API_KEY=your_anthropic_claude_api_key (optional - not currently used)
 ```
 
 ## ⚙️ **Optional Configuration Variables**
@@ -60,8 +60,9 @@ OPENAI_MODEL_MAIN=gpt-4o-mini
 
 - **Never commit these values to your repository**
 - **Use the Service Role Key** for Supabase (not the anon key)
-- **Claude API key is required** for the email summaries feature
-- **All three LLM keys** are used by different parts of the application
+- **OpenAI API key is required** for the email summaries feature
+- **OpenAI and Gemini keys** are used by different parts of the application
+- **Claude API key is optional** (not currently used by email summaries)
 
 ## 🔧 **Current Issue**
 

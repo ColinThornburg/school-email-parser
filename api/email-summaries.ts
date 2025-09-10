@@ -108,12 +108,12 @@ function htmlToText(html: string): string {
   return text;
 }
 
-// Claude Service for summarization
-class ClaudeService implements SummaryProvider {
+// OpenAI Service for summarization
+class OpenAIService implements SummaryProvider {
   private apiKey: string;
   private model: string;
 
-  constructor(apiKey: string, model: string = 'claude-3-5-sonnet-20241022') {
+  constructor(apiKey: string, model: string = 'gpt-4o-mini') {
     this.apiKey = apiKey;
     this.model = model;
   }
@@ -122,41 +122,45 @@ class ClaudeService implements SummaryProvider {
     const prompt = this.createSummaryPrompt(emailContent);
 
     try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-api-key': this.apiKey,
-          'anthropic-version': '2023-06-01'
+          'Authorization': `Bearer ${this.apiKey}`
         },
         body: JSON.stringify({
           model: this.model,
-          max_tokens: 1500,
           messages: [
+            {
+              role: 'system',
+              content: 'You are an AI assistant that creates comprehensive, clean summaries of school emails. Focus on extracting key information, important dates, and actionable items in a well-structured format.'
+            },
             {
               role: 'user',
               content: prompt
             }
-          ]
+          ],
+          temperature: 0.2,
+          max_tokens: 1500
         })
       });
 
       if (!response.ok) {
-        throw new Error(`Claude API error: ${response.statusText}`);
+        throw new Error(`OpenAI API error: ${response.statusText}`);
       }
 
       const data = await response.json();
-      const content = data.content[0]?.text;
+      const content = data.choices[0]?.message?.content;
 
       if (!content) {
-        throw new Error('No response content from Claude');
+        throw new Error('No response content from OpenAI');
       }
 
       const summary = JSON.parse(content);
       return this.validateSummaryResponse(summary);
 
     } catch (error) {
-      console.error('Claude summary error:', error);
+      console.error('OpenAI summary error:', error);
       throw new Error(`Failed to summarize email: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -215,12 +219,12 @@ Focus on being comprehensive yet concise. Keep the original context and tone whe
 }
 
 // Factory function to create summary provider
-function createSummaryProvider(provider: 'claude' = 'claude'): SummaryProvider {
-  const claudeKey = process.env.CLAUDE_API_KEY;
-  if (!claudeKey) {
-    throw new Error('Claude API key not found in environment variables');
+function createSummaryProvider(provider: 'openai' = 'openai'): SummaryProvider {
+  const openaiKey = process.env.OPENAI_API_KEY;
+  if (!openaiKey) {
+    throw new Error('OpenAI API key not found in environment variables');
   }
-  return new ClaudeService(claudeKey, 'claude-3-5-sonnet-20241022');
+  return new OpenAIService(openaiKey, 'gpt-4o-mini');
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -262,7 +266,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Generate summaries for emails
-    const summaryProvider = createSummaryProvider('claude'); // Using Claude for better summarization
+    const summaryProvider = createSummaryProvider('openai'); // Using OpenAI for summarization
     const summaries = [];
 
     for (const email of emails) {
