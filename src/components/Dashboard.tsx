@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
 import Calendar from './ui/calendar'
-import { Calendar as CalendarIcon, Settings, Mail, Clock, CheckCircle, LogIn, RefreshCw, X, BarChart3, Trash2, FileText, Menu, TrendingUp, ChevronDown, ChevronUp, User, Globe } from 'lucide-react'
+import { Calendar as CalendarIcon, Settings, Mail, Clock, CheckCircle, LogIn, RefreshCw, X, BarChart3, Trash2, FileText, Menu, TrendingUp, ChevronDown, ChevronUp, User, Globe, List } from 'lucide-react'
 import { ExtractedDate } from '../types'
 import { formatDate } from '../lib/utils'
 import { createGmailService } from '../lib/gmail'
@@ -438,7 +438,7 @@ export default function Dashboard() {
                 onClick={() => setView('list')}
                 className="h-8"
               >
-                <Mail className="h-4 w-4" />
+                <List className="h-4 w-4" />
               </Button>
               <Button
                 variant={view === 'summaries' ? 'default' : 'ghost'}
