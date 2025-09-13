@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
 import Calendar from './ui/calendar'
-import { Calendar as CalendarIcon, Settings, Mail, Clock, CheckCircle, LogIn, RefreshCw, X, BarChart3, Trash2, FileText, Menu, TrendingUp, ChevronDown, ChevronUp, User, Globe, List } from 'lucide-react'
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
+import { Calendar as CalendarIcon, Settings, Mail, Clock, CheckCircle, LogIn, RefreshCw, X, BarChart3, Trash2, FileText, TrendingUp, ChevronDown, ChevronUp, User, Globe, List, MoreVertical, Download, RotateCcw, Key } from 'lucide-react'
 import { ExtractedDate } from '../types'
 import { formatDate } from '../lib/utils'
 import { createGmailService } from '../lib/gmail'
@@ -23,7 +24,6 @@ export default function Dashboard() {
   const [eventToDelete, setEventToDelete] = useState<ExtractedDate | null>(null)
   const [lookbackDays, setLookbackDays] = useState(7)
   const [showStats, setShowStats] = useState(false)
-  const [showQuickActions, setShowQuickActions] = useState(false)
 
   useEffect(() => {
     // Check if user is authenticated
@@ -410,17 +410,88 @@ export default function Dashboard() {
               {showStats ? <ChevronUp className="h-4 w-4 ml-1" /> : <ChevronDown className="h-4 w-4 ml-1" />}
             </Button>
             
-            {/* Quick Actions Toggle */}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowQuickActions(!showQuickActions)}
-              className="text-gray-600 hover:text-gray-900"
-            >
-              <Menu className="h-4 w-4 mr-2" />
-              Actions
-              {showQuickActions ? <ChevronUp className="h-4 w-4 ml-1" /> : <ChevronDown className="h-4 w-4 ml-1" />}
-            </Button>
+            {/* Actions Dropdown */}
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-gray-600 hover:text-gray-900"
+                >
+                  <MoreVertical className="h-4 w-4 mr-2" />
+                  Actions
+                </Button>
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content
+                  className="min-w-[200px] bg-white rounded-md shadow-lg border border-gray-200 p-1 z-50"
+                  sideOffset={5}
+                >
+                  <DropdownMenu.Item
+                    className="flex items-center px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-sm cursor-pointer"
+                    onClick={handleSyncEmails}
+                    disabled={isSyncing}
+                  >
+                    {isSyncing ? (
+                      <RefreshCw className="h-4 w-4 mr-3 animate-spin text-blue-600" />
+                    ) : (
+                      <Download className="h-4 w-4 mr-3 text-blue-600" />
+                    )}
+                    {isSyncing ? 'Syncing...' : 'Sync Emails'}
+                  </DropdownMenu.Item>
+                  
+                  <DropdownMenu.Item
+                    className="flex items-center px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-sm cursor-pointer"
+                    onClick={handleReprocessEmails}
+                    disabled={isSyncing}
+                  >
+                    <RotateCcw className="h-4 w-4 mr-3 text-orange-600" />
+                    Reprocess Emails
+                  </DropdownMenu.Item>
+                  
+                  <DropdownMenu.Item
+                    className="flex items-center px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-sm cursor-pointer"
+                    onClick={handleReAuth}
+                    disabled={isSyncing}
+                  >
+                    <Key className="h-4 w-4 mr-3 text-green-600" />
+                    Re-authenticate Gmail
+                  </DropdownMenu.Item>
+                  
+                  <DropdownMenu.Separator className="h-px bg-gray-200 my-1" />
+                  
+                  <DropdownMenu.Item
+                    className="flex items-center px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-sm cursor-pointer"
+                    onClick={() => setShowSettings(!showSettings)}
+                  >
+                    <Settings className="h-4 w-4 mr-3 text-gray-600" />
+                    {showSettings ? 'Hide Settings' : 'Manage Sources'}
+                  </DropdownMenu.Item>
+                  
+                  <DropdownMenu.Separator className="h-px bg-gray-200 my-1" />
+                  
+                  <div className="px-3 py-2">
+                    <label htmlFor="lookback-select" className="text-xs font-medium text-gray-500 block mb-1">
+                      Email Lookback Period
+                    </label>
+                    <select
+                      id="lookback-select"
+                      value={lookbackDays}
+                      onChange={(e) => setLookbackDays(parseInt(e.target.value))}
+                      className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                      disabled={isSyncing}
+                    >
+                      <option value={1}>1 day</option>
+                      <option value={3}>3 days</option>
+                      <option value={7}>7 days</option>
+                      <option value={14}>14 days</option>
+                      <option value={21}>21 days</option>
+                      <option value={30}>30 days</option>
+                    </select>
+                  </div>
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
             
             {/* View Selector */}
             <div className="flex bg-gray-100 rounded-lg p-1">
@@ -507,88 +578,6 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Collapsible Quick Actions */}
-        {showQuickActions && (
-          <div className="mb-6">
-            <Card className="bg-white shadow-sm">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Menu className="h-5 w-5" />
-                  Quick Actions
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Lookback Period Selector */}
-                <div className="p-3 bg-gray-50 rounded-lg border">
-                  <div className="flex items-center gap-4">
-                    <label htmlFor="lookback-select" className="text-sm font-medium text-gray-700">
-                      Email Lookback Period:
-                    </label>
-                    <select
-                      id="lookback-select"
-                      value={lookbackDays}
-                      onChange={(e) => setLookbackDays(parseInt(e.target.value))}
-                      className="px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      disabled={isSyncing}
-                    >
-                      <option value={1}>1 day</option>
-                      <option value={3}>3 days</option>
-                      <option value={7}>7 days (1 week)</option>
-                      <option value={14}>14 days (2 weeks)</option>
-                      <option value={21}>21 days (3 weeks)</option>
-                      <option value={30}>30 days (1 month)</option>
-                    </select>
-                    <span className="text-xs text-gray-500">
-                      Search for emails received in the last {lookbackDays} day{lookbackDays !== 1 ? 's' : ''}
-                    </span>
-                  </div>
-                </div>
-                
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <Button 
-                    className="w-full" 
-                    variant="outline" 
-                    onClick={handleSyncEmails}
-                    disabled={isSyncing}
-                  >
-                    {isSyncing ? (
-                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <Mail className="h-4 w-4 mr-2" />
-                    )}
-                    {isSyncing ? 'Syncing...' : 'Sync Emails'}
-                  </Button>
-                  <Button 
-                    className="w-full" 
-                    variant="outline"
-                    onClick={handleReprocessEmails}
-                    disabled={isSyncing}
-                  >
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    Reprocess Emails
-                  </Button>
-                  <Button 
-                    className="w-full" 
-                    variant="outline"
-                    onClick={handleReAuth}
-                    disabled={isSyncing}
-                  >
-                    <LogIn className="h-4 w-4 mr-2" />
-                    Re-authenticate Gmail
-                  </Button>
-                  <Button 
-                    className="w-full" 
-                    variant="outline"
-                    onClick={() => setShowSettings(!showSettings)}
-                  >
-                    <Settings className="h-4 w-4 mr-2" />
-                    {showSettings ? 'Hide Settings' : 'Manage Sources'}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
 
         {/* Settings Panel */}
         {showSettings && (
