@@ -8,7 +8,10 @@
     "build": "tsc && vite build",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
-    "vercel-build": "npm run build"
+    "vercel-build": "npm run build",
+    "pre-deploy": "./pre-deploy.sh",
+    "deploy": "npm run pre-deploy && echo 'Pre-deployment checks passed. Run: git add . && git commit -m \"<message>\" && git push origin main'",
+    "type-check": "tsc --noEmit"
   },
   "dependencies": {
     "@radix-ui/react-avatar": "^1.0.4",
