@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
 import Calendar from './ui/calendar'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
-import { Calendar as CalendarIcon, Settings, Mail, Clock, CheckCircle, LogIn, RefreshCw, X, BarChart3, Trash2, FileText, TrendingUp, ChevronDown, ChevronUp, User, Globe, List, MoreVertical, Download, RotateCcw, Key } from 'lucide-react'
+import { Calendar as CalendarIcon, Settings, Mail, Clock, CheckCircle, LogIn, RefreshCw, X, BarChart3, Trash2, FileText, User, Globe, List, MoreVertical, Download, RotateCcw, Key, Activity, Calendar as CalendarIcon2, CheckCircle2, AlertCircle } from 'lucide-react'
 import { ExtractedDate } from '../types'
 import { formatDate } from '../lib/utils'
 import { createGmailService } from '../lib/gmail'
@@ -23,7 +23,6 @@ export default function Dashboard() {
   const [selectedEvent, setSelectedEvent] = useState<ExtractedDate | null>(null)
   const [eventToDelete, setEventToDelete] = useState<ExtractedDate | null>(null)
   const [lookbackDays, setLookbackDays] = useState(7)
-  const [showStats, setShowStats] = useState(false)
 
   useEffect(() => {
     // Check if user is authenticated
@@ -398,17 +397,81 @@ export default function Dashboard() {
           </div>
           
           <div className="flex items-center gap-3">
-            {/* Stats Toggle */}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowStats(!showStats)}
-              className="text-gray-600 hover:text-gray-900"
-            >
-              <TrendingUp className="h-4 w-4 mr-2" />
-              Stats
-              {showStats ? <ChevronUp className="h-4 w-4 ml-1" /> : <ChevronDown className="h-4 w-4 ml-1" />}
-            </Button>
+            {/* Stats Dropdown */}
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-gray-600 hover:text-gray-900"
+                >
+                  <Activity className="h-4 w-4 mr-2" />
+                  Stats
+                </Button>
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content
+                  className="min-w-[280px] bg-white rounded-md shadow-lg border border-gray-200 p-3 z-50"
+                  sideOffset={5}
+                >
+                  <div className="space-y-3">
+                    <div className="text-sm font-medium text-gray-700 mb-2">Event Statistics</div>
+                    
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="flex items-center gap-3 p-2 bg-blue-50 rounded-lg">
+                        <div className="p-1.5 bg-blue-100 rounded-full">
+                          <Activity className="h-4 w-4 text-blue-600" />
+                        </div>
+                        <div>
+                          <div className="text-lg font-bold text-blue-700">{events.length}</div>
+                          <div className="text-xs text-blue-600">Total Events</div>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center gap-3 p-2 bg-green-50 rounded-lg">
+                        <div className="p-1.5 bg-green-100 rounded-full">
+                          <CalendarIcon2 className="h-4 w-4 text-green-600" />
+                        </div>
+                        <div>
+                          <div className="text-lg font-bold text-green-700">
+                            {events.filter(event => {
+                              const today = new Date()
+                              const eventDate = new Date(event.eventDate)
+                              return eventDate.toDateString() === today.toDateString()
+                            }).length}
+                          </div>
+                          <div className="text-xs text-green-600">Today</div>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center gap-3 p-2 bg-orange-50 rounded-lg">
+                        <div className="p-1.5 bg-orange-100 rounded-full">
+                          <AlertCircle className="h-4 w-4 text-orange-600" />
+                        </div>
+                        <div>
+                          <div className="text-lg font-bold text-orange-700">
+                            {events.filter(event => new Date(event.eventDate) >= new Date()).length}
+                          </div>
+                          <div className="text-xs text-orange-600">Upcoming</div>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center gap-3 p-2 bg-purple-50 rounded-lg">
+                        <div className="p-1.5 bg-purple-100 rounded-full">
+                          <CheckCircle2 className="h-4 w-4 text-purple-600" />
+                        </div>
+                        <div>
+                          <div className="text-lg font-bold text-purple-700">
+                            {events.filter(e => e.isVerified).length}
+                          </div>
+                          <div className="text-xs text-purple-600">Verified</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
             
             {/* Actions Dropdown */}
             <DropdownMenu.Root>
@@ -538,45 +601,6 @@ export default function Dashboard() {
 
       <div className="max-w-7xl mx-auto p-6">
 
-        {/* Collapsible Stats Cards */}
-        {showStats && (
-          <div className="mb-6">
-            <Card className="bg-white shadow-sm">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <TrendingUp className="h-5 w-5" />
-                  Statistics Overview
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="text-center p-3 bg-blue-50 rounded-lg">
-                    <div className="text-2xl font-bold text-blue-700">{events.length}</div>
-                    <p className="text-sm text-blue-600">Total Events</p>
-                  </div>
-                  <div className="text-center p-3 bg-green-50 rounded-lg">
-                    <div className="text-2xl font-bold text-green-700">{events.filter(event => {
-                      const today = new Date()
-                      const eventDate = new Date(event.eventDate)
-                      return eventDate.toDateString() === today.toDateString()
-                    }).length}</div>
-                    <p className="text-sm text-green-600">Today</p>
-                  </div>
-                  <div className="text-center p-3 bg-orange-50 rounded-lg">
-                    <div className="text-2xl font-bold text-orange-700">{events.filter(event => new Date(event.eventDate) >= new Date()).length}</div>
-                    <p className="text-sm text-orange-600">Upcoming</p>
-                  </div>
-                  <div className="text-center p-3 bg-purple-50 rounded-lg">
-                    <div className="text-2xl font-bold text-purple-700">
-                      {events.filter(e => e.isVerified).length}
-                    </div>
-                    <p className="text-sm text-purple-600">Verified</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
 
 
         {/* Settings Panel */}
