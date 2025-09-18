@@ -19,6 +19,13 @@ export default function Dashboard() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isSyncing, setIsSyncing] = useState(false)
+  const [processingPhase, setProcessingPhase] = useState<string>('')
+  const [processingProgress, setProcessingProgress] = useState<{
+    current: number;
+    total: number;
+    emailsProcessed: number;
+    eventsExtracted: number;
+  }>({ current: 0, total: 0, emailsProcessed: 0, eventsExtracted: 0 })
   const [showSettings, setShowSettings] = useState(false)
   const [selectedEvent, setSelectedEvent] = useState<ExtractedDate | null>(null)
   const [eventToDelete, setEventToDelete] = useState<ExtractedDate | null>(null)
@@ -221,7 +228,12 @@ export default function Dashboard() {
     if (!user) return
 
     setIsSyncing(true)
+    setProcessingPhase('🔍 Connecting to Gmail and preparing to sync...')
+    setProcessingProgress({ current: 0, total: 0, emailsProcessed: 0, eventsExtracted: 0 })
+
     try {
+      setProcessingPhase('📧 Retrieving emails from Gmail...')
+
       const response = await fetch('/api/sync-emails', {
         method: 'POST',
         headers: {
@@ -245,11 +257,30 @@ export default function Dashboard() {
         throw new Error('Failed to sync emails')
       }
 
+      setProcessingPhase('🤖 Processing emails with AI...')
+
       const result = await response.json()
-      
+
+      // Update progress with final results
+      setProcessingProgress({
+        current: result.processed || 0,
+        total: result.processed || 0,
+        emailsProcessed: result.processed || 0,
+        eventsExtracted: result.extracted || 0
+      })
+
+      setProcessingPhase('🔄 Refreshing your calendar...')
+
       // Refresh events after sync
       await fetchEvents(user.id)
-      
+
+      setProcessingPhase('✅ Sync completed successfully!')
+
+      // Show completion message briefly before hiding banner
+      setTimeout(() => {
+        setProcessingPhase('')
+      }, 2000)
+
       let message = `Sync completed! Processed ${result.processed} emails and extracted ${result.extracted} dates.\nLooked back ${lookbackDays} day${lookbackDays !== 1 ? 's' : ''} for emails.`
       if (result.duplicatesRemoved > 0) {
         message += `\nRemoved ${result.duplicatesRemoved} duplicate events.`
@@ -260,15 +291,22 @@ export default function Dashboard() {
       if (result.skippedDuplicateEvents > 0) {
         message += `\nSkipped ${result.skippedDuplicateEvents} duplicate events.`
       }
-      
+
       alert(message)
     } catch (error) {
       console.error('Error syncing emails:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-      
+
+      setProcessingPhase('❌ Sync failed')
+
+      // Show error briefly before hiding banner
+      setTimeout(() => {
+        setProcessingPhase('')
+      }, 3000)
+
       // Check if it's a scope/authentication error
-      if (errorMessage.includes('insufficient') || 
-          errorMessage.includes('forbidden') || 
+      if (errorMessage.includes('insufficient') ||
+          errorMessage.includes('forbidden') ||
           errorMessage.includes('scopes') ||
           errorMessage.includes('Authentication failed')) {
         alert(`Authentication Error: ${errorMessage}\n\nPlease click "Re-authenticate Gmail" to fix permission issues.`)
@@ -289,7 +327,12 @@ export default function Dashboard() {
     if (!confirmed) return
 
     setIsSyncing(true)
+    setProcessingPhase('🔄 Preparing to reprocess all emails...')
+    setProcessingProgress({ current: 0, total: 0, emailsProcessed: 0, eventsExtracted: 0 })
+
     try {
+      setProcessingPhase('🗑️ Cleaning up existing data...')
+
       const response = await fetch('/api/sync-emails', {
         method: 'POST',
         headers: {
@@ -313,24 +356,57 @@ export default function Dashboard() {
         throw new Error('Failed to reprocess emails')
       }
 
+      setProcessingPhase('📧 Retrieving emails from Gmail (90-day history)...')
+
+      // Since reprocessing can take longer, we'll show an intermediate phase
+      setTimeout(() => {
+        if (isSyncing) {
+          setProcessingPhase('🤖 Processing emails with AI (this may take a while)...')
+        }
+      }, 3000)
+
       const result = await response.json()
-      
+
+      // Update progress with final results
+      setProcessingProgress({
+        current: result.processed || 0,
+        total: result.processed || 0,
+        emailsProcessed: result.processed || 0,
+        eventsExtracted: result.extracted || 0
+      })
+
+      setProcessingPhase('🔄 Refreshing your calendar...')
+
       // Refresh events after reprocessing
       await fetchEvents(user.id)
-      
+
+      setProcessingPhase('✅ Reprocessing completed successfully!')
+
+      // Show completion message briefly before hiding banner
+      setTimeout(() => {
+        setProcessingPhase('')
+      }, 2000)
+
       let message = `Reprocessing completed! Processed ${result.processed} emails and extracted ${result.extracted} dates.\nUsed ${lookbackDays}-day lookback period (reprocess uses up to 90 days).`
       if (result.duplicatesRemoved > 0) {
         message += `\nRemoved ${result.duplicatesRemoved} duplicate events during cleanup.`
       }
-      
+
       alert(message)
     } catch (error) {
       console.error('Error reprocessing emails:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-      
+
+      setProcessingPhase('❌ Reprocessing failed')
+
+      // Show error briefly before hiding banner
+      setTimeout(() => {
+        setProcessingPhase('')
+      }, 3000)
+
       // Check if it's a scope/authentication error
-      if (errorMessage.includes('insufficient') || 
-          errorMessage.includes('forbidden') || 
+      if (errorMessage.includes('insufficient') ||
+          errorMessage.includes('forbidden') ||
           errorMessage.includes('scopes') ||
           errorMessage.includes('Authentication failed')) {
         alert(`Authentication Error: ${errorMessage}\n\nPlease click "Re-authenticate Gmail" to fix permission issues.`)
@@ -500,7 +576,14 @@ export default function Dashboard() {
                     ) : (
                       <Download className="h-4 w-4 mr-3 text-blue-600" />
                     )}
-                    {isSyncing ? 'Syncing...' : 'Sync Emails'}
+                    {isSyncing ? (
+                      <div className="flex flex-col">
+                        <span>Syncing...</span>
+                        {processingPhase && (
+                          <span className="text-xs text-gray-500 mt-1">{processingPhase}</span>
+                        )}
+                      </div>
+                    ) : 'Sync Emails'}
                   </DropdownMenu.Item>
                   
                   <DropdownMenu.Item
@@ -508,8 +591,19 @@ export default function Dashboard() {
                     onClick={handleReprocessEmails}
                     disabled={isSyncing}
                   >
-                    <RotateCcw className="h-4 w-4 mr-3 text-orange-600" />
-                    Reprocess Emails
+                    {isSyncing ? (
+                      <RefreshCw className="h-4 w-4 mr-3 animate-spin text-orange-600" />
+                    ) : (
+                      <RotateCcw className="h-4 w-4 mr-3 text-orange-600" />
+                    )}
+                    {isSyncing ? (
+                      <div className="flex flex-col">
+                        <span>Reprocessing...</span>
+                        {processingPhase && (
+                          <span className="text-xs text-gray-500 mt-1">{processingPhase}</span>
+                        )}
+                      </div>
+                    ) : 'Reprocess Emails'}
                   </DropdownMenu.Item>
                   
                   <DropdownMenu.Item
@@ -600,6 +694,55 @@ export default function Dashboard() {
       </div>
 
       <div className="max-w-7xl mx-auto p-6">
+        {/* Processing Status Banner */}
+        {isSyncing && (
+          <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="flex-shrink-0">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                </div>
+                <div>
+                  <h3 className="text-lg font-medium text-blue-900">
+                    {processingPhase || 'Processing emails...'}
+                  </h3>
+                  {processingProgress.total > 0 && (
+                    <div className="mt-1">
+                      <div className="flex items-center space-x-4 text-sm text-blue-700">
+                        <span>
+                          {processingProgress.current} of {processingProgress.total} emails
+                        </span>
+                        {processingProgress.emailsProcessed > 0 && (
+                          <span>
+                            {processingProgress.emailsProcessed} processed
+                          </span>
+                        )}
+                        {processingProgress.eventsExtracted > 0 && (
+                          <span>
+                            {processingProgress.eventsExtracted} events found
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-2 w-full bg-blue-200 rounded-full h-2">
+                        <div
+                          className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
+                          style={{
+                            width: `${Math.round((processingProgress.current / processingProgress.total) * 100)}%`
+                          }}
+                        ></div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center space-x-2">
+                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                  Processing
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
 
 
 
