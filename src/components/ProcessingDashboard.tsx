@@ -265,12 +265,12 @@ export default function ProcessingDashboard({ user: propUser }: Props) {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <p className="text-blue-700">
+              <p className="text-sky-200">
                 {dashboardData.message || 'Processing dashboard is not yet available.'}
               </p>
               <div className="bg-white/12 border border-white/20 rounded-lg p-4 backdrop-blur-xl">
                 <h4 className="font-medium text-sky-100 mb-2">To enable dashboard tracking:</h4>
-                <ol className="list-decimal list-inside space-y-1 text-sm text-blue-700">
+                <ol className="list-decimal list-inside space-y-1 text-sm text-sky-200">
                   <li>Go to your Supabase SQL Editor</li>
                   <li>Run the updated <code className="bg-blue-100 px-1 rounded">supabase-schema.sql</code> file</li>
                   <li>This will create the new dashboard tracking tables</li>
@@ -303,7 +303,7 @@ export default function ProcessingDashboard({ user: propUser }: Props) {
         <div>
           <h1 className="text-2xl font-bold">Processing Dashboard</h1>
           {dashboardData.useEnhancedEmails && (
-            <p className="text-sm text-green-600 mt-1">
+            <p className="text-sm text-emerald-200 mt-1">
               ✨ Enhanced Email View - Showing detailed processing information for each email
             </p>
           )}
@@ -320,16 +320,16 @@ export default function ProcessingDashboard({ user: propUser }: Props) {
 
       {/* Partial Data Mode Banner */}
       {dashboardData.partialDataMode && (
-        <Card className="border-amber-200 bg-amber-50">
+        <Card className="border border-amber-400/35 bg-amber-400/15 backdrop-blur-xl">
           <CardContent className="p-4">
             <div className="flex items-start gap-3">
-              <span className="text-amber-600 text-lg">⚠️</span>
+              <span className="text-amber-200 text-lg">⚠️</span>
               <div>
-                <h4 className="font-medium text-amber-800 mb-1">Partial Data Mode</h4>
-                <p className="text-amber-700 text-sm mb-2">
+                <h4 className="font-medium text-amber-100 mb-1">Partial Data Mode</h4>
+                <p className="text-amber-100/80 text-sm mb-2">
                   {dashboardData.message || 'Showing limited dashboard data.'}
                 </p>
-                <p className="text-amber-600 text-xs">
+                <p className="text-amber-100/70 text-xs">
                   ✅ Email processing details • ✅ LLM usage • ❌ Full session tracking • ❌ Advanced analytics
                 </p>
               </div>
@@ -523,7 +523,7 @@ export default function ProcessingDashboard({ user: propUser }: Props) {
                         <div className="flex items-center gap-2">
                           <span className={`px-2 py-1 rounded text-xs font-medium ${
                             session.session_type === 'reprocess' 
-                              ? 'bg-orange-100 text-orange-800' 
+                              ? 'bg-amber-400/25 border border-amber-400/35 text-amber-100' 
                               : 'bg-sky-400/20 border border-sky-400/35 text-sky-100'
                           }`}>
                             {session.session_type}
@@ -629,7 +629,7 @@ export default function ProcessingDashboard({ user: propUser }: Props) {
                                         )}
                                       </div>
                                       <div className="text-right">
-                                        <p className="font-medium text-blue-700">
+                                        <p className="font-medium text-sky-200">
                                           {item.output_tokens || 0} events extracted
                                         </p>
                                         <p className="text-xs text-slate-300">
@@ -644,7 +644,7 @@ export default function ProcessingDashboard({ user: propUser }: Props) {
                               {session.processing_history
                                 .filter(item => item.llm_provider !== 'email_processing')
                                 .map((item) => (
-                                  <div key={item.id} className="flex items-center justify-between p-2 bg-white/10 rounded text-sm">
+                                  <div key={item.id} className="flex items-center justify-between p-2 bg-white/10 border border-white/15 rounded text-sm">
                                     <div className="flex items-center gap-2">
                                       <span>{getProviderIcon(item.llm_provider)}</span>
                                       <span className="font-medium">{item.llm_provider}</span>
@@ -657,7 +657,7 @@ export default function ProcessingDashboard({ user: propUser }: Props) {
                                         </span>
                                       )}
                                       {item.retry_count > 0 && (
-                                        <span className="text-orange-600">
+                                        <span className="text-amber-200">
                                           {item.retry_count} retries
                                         </span>
                                       )}
@@ -669,7 +669,7 @@ export default function ProcessingDashboard({ user: propUser }: Props) {
                                       </div>
                                       <div>
                                         <p className="font-medium">{formatCurrency(item.cost)}</p>
-                                        <p className={`text-xs ${item.success_status ? 'text-green-600' : 'text-red-600'}`}>
+                                        <p className={`text-xs ${item.success_status ? 'text-emerald-200' : 'text-rose-200'}`}>
                                           {item.success_status ? 'Success' : 'Failed'}
                                         </p>
                                       </div>

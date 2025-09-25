@@ -1310,57 +1310,18 @@ class GeminiService {
   }
 
   private createClassificationPrompt(emailContent: EmailContent): string {
-    return `Analyze this school email to determine if it contains date/time information that should be extracted for a calendar.
-
-Email Subject: ${emailContent.subject}
-Email From: ${emailContent.senderEmail}
-Email Body: ${emailContent.body.substring(0, 500)}...
-
-Return ONLY a JSON object with this structure:
-{
-  "hasDateContent": boolean,
-  "confidence": number (0-1),
-  "reasoning": "brief explanation"
-}
-
-Look for:
-- Assignment deadlines
-- Test dates
-- Events, meetings, conferences
-- Sports games
-- Field trips
-- Registration deadlines
-- Performance dates
-
-Return true if ANY date/time information is found, false otherwise.`;
+    return prompts.classificationPrompt
+      .replace('{{subject}}', emailContent.subject)
+      .replace('{{senderEmail}}', emailContent.senderEmail)
+      .replace('{{bodyPreview}}', emailContent.body.substring(0, 500));
   }
 
   private createExtractionPrompt(emailContent: EmailContent): string {
-    return `Extract important dates from this school email. Be specific and detailed.
-
-Email: ${emailContent.subject}
-From: ${emailContent.senderEmail}
-Date: ${emailContent.sentDate}
-Body (cleaned from HTML): ${emailContent.body}
-
-Focus on school events: assignments, tests, meetings, sports, trips, performances.
-Include specific details in titles and descriptions.
-Convert relative dates to absolute dates based on sent date: ${emailContent.sentDate}
-Only include future dates.
-
-Return JSON array:
-[
-  {
-    "title": "specific event title with details",
-    "date": "YYYY-MM-DD",
-    "time": "HH:MM" (optional),
-    "description": "detailed context and instructions",
-    "confidence": 0.95,
-    "reasoning": "explain exactly which text/phrase led to this date extraction and your interpretation"
-  }
-]
-
-Return [] if no dates found.`;
+    return prompts.extractionPrompt
+      .replace('{{subject}}', emailContent.subject)
+      .replace('{{senderEmail}}', emailContent.senderEmail)
+      .replace('{{sentDate}}', emailContent.sentDate)
+      .replace('{{body}}', emailContent.body);
   }
 
   private validateAndNormalizeResponse(events: any[], sentDate: string): LLMResponse[] {
