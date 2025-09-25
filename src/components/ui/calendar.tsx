@@ -17,6 +17,7 @@ export default function Calendar({ events, onEventClick, onSyncRequest }: Calend
     const dayOfWeek = today.getDay() // 0 = Sunday
     const startOfWeek = new Date(today)
     startOfWeek.setDate(today.getDate() - dayOfWeek) // Start on Sunday
+    startOfWeek.setHours(0, 0, 0, 0)
     return startOfWeek
   })
 
@@ -31,7 +32,9 @@ export default function Calendar({ events, onEventClick, onSyncRequest }: Calend
   const weekEvents = events.filter(event => {
     const eventDate = new Date(event.eventDate)
     const startOfWeek = new Date(currentWeekStart)
+    startOfWeek.setHours(0, 0, 0, 0)
     const endOfWeek = new Date(currentWeekStart)
+    endOfWeek.setHours(0, 0, 0, 0)
     endOfWeek.setDate(startOfWeek.getDate() + 6)
     endOfWeek.setHours(23, 59, 59, 999)
     
@@ -64,6 +67,7 @@ export default function Calendar({ events, onEventClick, onSyncRequest }: Calend
       } else {
         newDate.setDate(prev.getDate() + 7)
       }
+      newDate.setHours(0, 0, 0, 0)
       return newDate
     })
   }
@@ -73,6 +77,7 @@ export default function Calendar({ events, onEventClick, onSyncRequest }: Calend
     const dayOfWeek = today.getDay()
     const startOfWeek = new Date(today)
     startOfWeek.setDate(today.getDate() - dayOfWeek)
+    startOfWeek.setHours(0, 0, 0, 0)
     setCurrentWeekStart(startOfWeek)
   }
 
