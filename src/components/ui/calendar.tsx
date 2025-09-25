@@ -2,13 +2,15 @@ import { useState } from 'react'
 import { ChevronLeft, ChevronRight, Clock, CalendarCheck, AlertCircle, Loader2 } from 'lucide-react'
 import { Button } from './button'
 import { ExtractedDate } from '../../types'
+import { FcGoogle } from 'react-icons/fc'
 
 interface CalendarProps {
   events: ExtractedDate[]
   onEventClick?: (event: ExtractedDate) => void
+  onSyncRequest?: (event: ExtractedDate) => void
 }
 
-export default function Calendar({ events, onEventClick }: CalendarProps) {
+export default function Calendar({ events, onEventClick, onSyncRequest }: CalendarProps) {
   // Start with today's week
   const [currentWeekStart, setCurrentWeekStart] = useState(() => {
     const today = new Date()
@@ -237,6 +239,20 @@ export default function Calendar({ events, onEventClick }: CalendarProps) {
                         {event.description}
                       </div>
                     )}
+                    <div className="mt-2 flex items-center justify-end">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onSyncRequest?.(event)
+                        }}
+                        className="h-7 w-7 rounded-full"
+                        title="Sync to Google Calendar"
+                      >
+                        <FcGoogle className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 ))}
                 

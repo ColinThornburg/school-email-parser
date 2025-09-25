@@ -4,6 +4,7 @@ import { Button } from './ui/button'
 import Calendar from './ui/calendar'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { Calendar as CalendarIcon, Settings, Mail, Clock, CheckCircle, LogIn, RefreshCw, X, BarChart3, Trash2, FileText, User, Globe, List, MoreVertical, Download, RotateCcw, Key, Activity, Calendar as CalendarIcon2, CheckCircle2, AlertCircle, CalendarCheck, Loader2 } from 'lucide-react'
+import { FcGoogle } from 'react-icons/fc'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ExtractedDate } from '../types'
 import { formatDate } from '../lib/utils'
@@ -291,7 +292,11 @@ export default function Dashboard() {
         googleCalendarSyncStatus: 'error',
         googleCalendarSyncError: message
       }))
-      alert(`Failed to sync event to Google Calendar: ${message}`)
+      const needsReauth = /expired|invalid|token|refresh/i.test(message)
+      const friendlyMessage = needsReauth
+        ? `Google needs a fresh permission slip. Re-authenticate Gmail to renew your access, then try again.\n\nDetails: ${message}`
+        : `Failed to sync event to Google Calendar: ${message}`
+      alert(friendlyMessage)
     } finally {
       setCalendarSyncingEventId(null)
     }
@@ -885,6 +890,7 @@ export default function Dashboard() {
                 <Calendar 
                   events={events} 
                   onEventClick={handleEventClick}
+                  onSyncRequest={handleSyncToCalendar}
                 />
               ) : view === 'list' ? (
                 <div className="space-y-4">
@@ -1061,6 +1067,18 @@ export default function Dashboard() {
                                     >
                                       {Math.round(event.confidenceScore * 100)}%
                                     </span>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        handleSyncToCalendar(event)
+                                      }}
+                                      className="h-8 w-8 p-0"
+                                      title="Sync to Google Calendar"
+                                    >
+                                      <FcGoogle className="h-4 w-4" />
+                                    </Button>
                                     <Button
                                       variant="ghost"
                                       size="sm"
