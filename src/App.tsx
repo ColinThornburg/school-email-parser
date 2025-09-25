@@ -9,7 +9,7 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <Router>
-        <div className="min-h-screen bg-background">
+        <div className="min-h-screen">
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/auth/callback" element={<AuthCallback />} />

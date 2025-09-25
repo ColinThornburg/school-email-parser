@@ -166,8 +166,8 @@ export default function Calendar({ events, onEventClick }: CalendarProps) {
             <div
               key={index}
               className={`
-                min-w-[220px] shrink-0 p-3 border rounded-lg relative bg-background
-                ${isToday(date) ? 'ring-2 ring-primary bg-primary/5' : ''}
+                min-w-[220px] shrink-0 p-3 border rounded-2xl relative bg-white/8 backdrop-blur-xl
+                ${isToday(date) ? 'ring-2 ring-primary bg-primary/15' : ''}
                 ${isPastDate(date) ? 'opacity-60' : ''}
                 md:min-w-0 md:min-h-[220px]
               `}
@@ -194,12 +194,12 @@ export default function Calendar({ events, onEventClick }: CalendarProps) {
                   <div
                     key={event.id}
                     className={`
-                      text-xs p-2 rounded cursor-pointer hover:opacity-80 transition-opacity
+                      text-xs p-2 rounded-xl cursor-pointer transition-colors backdrop-blur-xl border
                       ${event.confidenceScore >= 0.9 
-                        ? 'bg-green-100 text-green-800 hover:bg-green-200 border-l-2 border-green-500' 
+                        ? 'bg-emerald-400/20 text-emerald-100 hover:bg-emerald-400/30 border-emerald-400/30' 
                         : event.confidenceScore >= 0.8
-                        ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200 border-l-2 border-yellow-500'
-                        : 'bg-red-100 text-red-800 hover:bg-red-200 border-l-2 border-red-500'
+                        ? 'bg-amber-400/25 text-amber-100 hover:bg-amber-400/35 border-amber-400/25'
+                        : 'bg-rose-500/25 text-rose-100 hover:bg-rose-500/35 border-rose-500/25'
                       }
                     `}
                     onClick={() => onEventClick?.(event)}
@@ -215,25 +215,25 @@ export default function Calendar({ events, onEventClick }: CalendarProps) {
                         <span className="text-[10px] uppercase tracking-wide opacity-70">All day</span>
                       )}
                       {event.googleCalendarSyncStatus === 'synced' && (
-                        <CalendarCheck className="h-3 w-3 text-green-700 flex-shrink-0" />
+                        <CalendarCheck className="h-3 w-3 text-emerald-200 flex-shrink-0" />
                       )}
                       {event.googleCalendarSyncStatus === 'pending' && (
-                        <Loader2 className="h-3 w-3 text-blue-700 flex-shrink-0 animate-spin" />
+                        <Loader2 className="h-3 w-3 text-primary flex-shrink-0 animate-spin" />
                       )}
                       {event.googleCalendarSyncStatus === 'error' && (
-                        <AlertCircle className="h-3 w-3 text-red-700 flex-shrink-0" />
+                        <AlertCircle className="h-3 w-3 text-rose-300 flex-shrink-0" />
                       )}
                     </div>
-                    <div className="font-medium leading-tight">
+                    <div className="font-medium leading-tight text-slate-100">
                       {event.eventTitle || event.description || 'Untitled Event'}
                     </div>
                     {event.senderName && (
-                      <div className="mt-1 text-xs opacity-60 font-medium">
+                      <div className="mt-1 text-xs opacity-80 text-slate-200 font-medium">
                         From: {event.senderName}
                       </div>
                     )}
                     {event.description && (
-                      <div className="mt-1 text-xs opacity-75 line-clamp-2">
+                      <div className="mt-1 text-xs opacity-80 text-slate-200/90 line-clamp-2">
                         {event.description}
                       </div>
                     )}
@@ -254,15 +254,15 @@ export default function Calendar({ events, onEventClick }: CalendarProps) {
       {/* Legend */}
       <div className="flex flex-wrap items-center gap-4 mt-6 text-xs sm:gap-6">
         <div className="flex items-center gap-2">
-          <div className="w-4 h-4 bg-green-500 rounded border-l-2 border-green-600"></div>
+          <div className="w-4 h-4 rounded border border-emerald-300/60 bg-emerald-400/40"></div>
           <span>High Confidence (90%+)</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-4 h-4 bg-yellow-500 rounded border-l-2 border-yellow-600"></div>
+          <div className="w-4 h-4 rounded border border-amber-300/60 bg-amber-400/40"></div>
           <span>Medium Confidence (80-89%)</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-4 h-4 bg-red-500 rounded border-l-2 border-red-600"></div>
+          <div className="w-4 h-4 rounded border border-rose-300/60 bg-rose-500/40"></div>
           <span>Low Confidence (&lt;80%)</span>
         </div>
       </div>

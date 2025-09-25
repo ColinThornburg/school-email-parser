@@ -521,7 +521,7 @@ export default function Dashboard() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
+          <p className="text-slate-300">Loading...</p>
         </div>
       </div>
     )
@@ -530,12 +530,12 @@ export default function Dashboard() {
   // Show authentication screen if not authenticated
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="max-w-md w-full bg-white rounded-lg shadow-md p-6">
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="max-w-md w-full rounded-2xl border border-white/12 bg-white/10 p-8 text-slate-100 shadow-[0_35px_75px_-35px_rgba(0,0,0,0.85)] backdrop-blur-2xl">
           <div className="text-center">
-            <Mail className="h-16 w-16 mx-auto mb-4 text-blue-600" />
-            <h1 className="text-2xl font-bold mb-2">School Email Parser</h1>
-            <p className="text-gray-600 mb-6">
+            <Mail className="h-16 w-16 mx-auto mb-4 text-primary" />
+            <h1 className="text-2xl font-bold mb-2 text-slate-100">School Email Parser</h1>
+            <p className="text-slate-300 mb-6">
               Connect your Gmail account to automatically extract important dates from school emails
             </p>
             <Button onClick={handleGmailAuth} className="w-full">
@@ -549,14 +549,14 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen text-slate-100">
       {/* Simplified Header */}
-      <div className="bg-white border-b border-gray-200 px-4 py-4 sm:px-6">
+      <div className="bg-white/10 border-b border-white/10 backdrop-blur-2xl px-4 py-4 shadow-[0_20px_45px_-28px_rgba(0,0,0,0.8)] sm:px-6">
         <div className="max-w-7xl mx-auto flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="w-full sm:w-auto">
-            <h1 className="text-2xl font-semibold text-gray-900">School Calendar</h1>
+            <h1 className="text-2xl font-semibold text-slate-100">School Calendar</h1>
             {user && (
-              <p className="text-sm text-gray-600 mt-1 truncate">
+              <p className="text-sm text-slate-300 mt-1 truncate">
                 {user.email}
               </p>
             )}
@@ -569,7 +569,7 @@ export default function Dashboard() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="w-full justify-start text-gray-600 hover:text-gray-900 sm:w-auto sm:justify-center"
+                  className="w-full justify-start text-slate-100 hover:text-primary sm:w-auto sm:justify-center"
                 >
                   <Activity className="h-4 w-4 mr-2" />
                   Stats
@@ -577,60 +577,60 @@ export default function Dashboard() {
               </DropdownMenu.Trigger>
               <DropdownMenu.Portal>
                 <DropdownMenu.Content
-                  className="min-w-[280px] bg-white rounded-md shadow-lg border border-gray-200 p-3 z-50"
+                  className="min-w-[280px] rounded-2xl border border-white/15 bg-white/10 p-3 text-foreground shadow-[0_25px_55px_-25px_rgba(0,0,0,0.85)] backdrop-blur-2xl z-50"
                   sideOffset={5}
                 >
                   <div className="space-y-3">
-                    <div className="text-sm font-medium text-gray-700 mb-2">Event Statistics</div>
+                    <div className="text-sm font-medium text-slate-100 mb-2">Event Statistics</div>
                     
                     <div className="grid grid-cols-2 gap-3">
-                      <div className="flex items-center gap-3 p-2 bg-blue-50 rounded-lg">
-                        <div className="p-1.5 bg-blue-100 rounded-full">
-                          <Activity className="h-4 w-4 text-blue-600" />
+                      <div className="flex items-center gap-3 p-2 rounded-xl border border-white/10 bg-white/10">
+                        <div className="p-1.5 rounded-full bg-primary/30">
+                          <Activity className="h-4 w-4 text-primary" />
                         </div>
                         <div>
-                          <div className="text-lg font-bold text-blue-700">{events.length}</div>
-                          <div className="text-xs text-blue-600">Total Events</div>
+                          <div className="text-lg font-bold text-slate-50">{events.length}</div>
+                          <div className="text-xs text-slate-300">Total Events</div>
                         </div>
                       </div>
                       
-                      <div className="flex items-center gap-3 p-2 bg-green-50 rounded-lg">
-                        <div className="p-1.5 bg-green-100 rounded-full">
-                          <CalendarIcon2 className="h-4 w-4 text-green-600" />
+                      <div className="flex items-center gap-3 p-2 rounded-xl border border-white/10 bg-white/10">
+                        <div className="p-1.5 rounded-full bg-emerald-500/30">
+                          <CalendarIcon2 className="h-4 w-4 text-emerald-200" />
                         </div>
                         <div>
-                          <div className="text-lg font-bold text-green-700">
+                          <div className="text-lg font-bold text-slate-50">
                             {events.filter(event => {
                               const today = new Date()
                               const eventDate = new Date(event.eventDate)
                               return eventDate.toDateString() === today.toDateString()
                             }).length}
                           </div>
-                          <div className="text-xs text-green-600">Today</div>
+                          <div className="text-xs text-slate-300">Today</div>
                         </div>
                       </div>
                       
-                      <div className="flex items-center gap-3 p-2 bg-orange-50 rounded-lg">
-                        <div className="p-1.5 bg-orange-100 rounded-full">
-                          <AlertCircle className="h-4 w-4 text-orange-600" />
+                      <div className="flex items-center gap-3 p-2 rounded-xl border border-white/10 bg-white/10">
+                        <div className="p-1.5 rounded-full bg-amber-500/30">
+                          <AlertCircle className="h-4 w-4 text-amber-200" />
                         </div>
                         <div>
-                          <div className="text-lg font-bold text-orange-700">
+                          <div className="text-lg font-bold text-slate-50">
                             {events.filter(event => new Date(event.eventDate) >= new Date()).length}
                           </div>
-                          <div className="text-xs text-orange-600">Upcoming</div>
+                          <div className="text-xs text-slate-300">Upcoming</div>
                         </div>
                       </div>
                       
-                      <div className="flex items-center gap-3 p-2 bg-purple-50 rounded-lg">
-                        <div className="p-1.5 bg-purple-100 rounded-full">
-                          <CheckCircle2 className="h-4 w-4 text-purple-600" />
+                      <div className="flex items-center gap-3 p-2 rounded-xl border border-white/10 bg-white/10">
+                        <div className="p-1.5 rounded-full bg-purple-500/30">
+                          <CheckCircle2 className="h-4 w-4 text-purple-200" />
                         </div>
                         <div>
-                          <div className="text-lg font-bold text-purple-700">
+                          <div className="text-lg font-bold text-slate-50">
                             {events.filter(e => e.isVerified).length}
                           </div>
-                          <div className="text-xs text-purple-600">Verified</div>
+                          <div className="text-xs text-slate-300">Verified</div>
                         </div>
                       </div>
                     </div>
@@ -645,7 +645,7 @@ export default function Dashboard() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="w-full justify-start text-gray-600 hover:text-gray-900 sm:w-auto sm:justify-center"
+                  className="w-full justify-start text-slate-100 hover:text-primary sm:w-auto sm:justify-center"
                 >
                   <MoreVertical className="h-4 w-4 mr-2" />
                   Actions
@@ -653,79 +653,79 @@ export default function Dashboard() {
               </DropdownMenu.Trigger>
               <DropdownMenu.Portal>
                 <DropdownMenu.Content
-                  className="min-w-[200px] bg-white rounded-md shadow-lg border border-gray-200 p-1 z-50"
+                  className="min-w-[200px] rounded-2xl border border-white/15 bg-white/10 p-1 text-foreground shadow-[0_25px_55px_-25px_rgba(0,0,0,0.85)] backdrop-blur-2xl z-50"
                   sideOffset={5}
                 >
                   <DropdownMenu.Item
-                    className="flex items-center px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-sm cursor-pointer"
+                    className="flex items-center px-3 py-2 text-sm text-slate-100 hover:bg-white/15 rounded-md cursor-pointer"
                     onClick={handleSyncEmails}
                     disabled={isSyncing}
                   >
                     {isSyncing ? (
-                      <RefreshCw className="h-4 w-4 mr-3 animate-spin text-blue-600" />
+                      <RefreshCw className="h-4 w-4 mr-3 animate-spin text-primary" />
                     ) : (
-                      <Download className="h-4 w-4 mr-3 text-blue-600" />
+                      <Download className="h-4 w-4 mr-3 text-primary" />
                     )}
                     {isSyncing ? (
                       <div className="flex flex-col">
                         <span>Syncing...</span>
                         {processingPhase && (
-                          <span className="text-xs text-gray-500 mt-1">{processingPhase}</span>
+                          <span className="text-xs text-slate-300 mt-1">{processingPhase}</span>
                         )}
                       </div>
                     ) : 'Sync Emails'}
                   </DropdownMenu.Item>
                   
                   <DropdownMenu.Item
-                    className="flex items-center px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-sm cursor-pointer"
+                    className="flex items-center px-3 py-2 text-sm text-slate-100 hover:bg-white/15 rounded-md cursor-pointer"
                     onClick={handleReprocessEmails}
                     disabled={isSyncing}
                   >
                     {isSyncing ? (
-                      <RefreshCw className="h-4 w-4 mr-3 animate-spin text-orange-600" />
+                      <RefreshCw className="h-4 w-4 mr-3 animate-spin text-amber-300" />
                     ) : (
-                      <RotateCcw className="h-4 w-4 mr-3 text-orange-600" />
+                      <RotateCcw className="h-4 w-4 mr-3 text-amber-300" />
                     )}
                     {isSyncing ? (
                       <div className="flex flex-col">
                         <span>Reprocessing...</span>
                         {processingPhase && (
-                          <span className="text-xs text-gray-500 mt-1">{processingPhase}</span>
+                          <span className="text-xs text-slate-300 mt-1">{processingPhase}</span>
                         )}
                       </div>
                     ) : 'Reprocess Emails'}
                   </DropdownMenu.Item>
                   
                   <DropdownMenu.Item
-                    className="flex items-center px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-sm cursor-pointer"
+                    className="flex items-center px-3 py-2 text-sm text-slate-100 hover:bg-white/15 rounded-md cursor-pointer"
                     onClick={handleReAuth}
                     disabled={isSyncing}
                   >
-                    <Key className="h-4 w-4 mr-3 text-green-600" />
+                    <Key className="h-4 w-4 mr-3 text-emerald-200" />
                     Re-authenticate Gmail
                   </DropdownMenu.Item>
                   
-                  <DropdownMenu.Separator className="h-px bg-gray-200 my-1" />
+                  <DropdownMenu.Separator className="h-px bg-white/10 my-1" />
                   
                   <DropdownMenu.Item
-                    className="flex items-center px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-sm cursor-pointer"
+                    className="flex items-center px-3 py-2 text-sm text-slate-100 hover:bg-white/15 rounded-md cursor-pointer"
                     onClick={() => setShowSettings(!showSettings)}
                   >
-                    <Settings className="h-4 w-4 mr-3 text-gray-600" />
+                    <Settings className="h-4 w-4 mr-3 text-slate-200" />
                     {showSettings ? 'Hide Settings' : 'Manage Sources'}
                   </DropdownMenu.Item>
                   
-                  <DropdownMenu.Separator className="h-px bg-gray-200 my-1" />
+                  <DropdownMenu.Separator className="h-px bg-white/10 my-1" />
                   
                   <div className="px-3 py-2">
-                    <label htmlFor="lookback-select" className="text-xs font-medium text-gray-500 block mb-1">
+                    <label htmlFor="lookback-select" className="text-xs font-medium text-slate-200 block mb-1">
                       Email Lookback Period
                     </label>
                     <select
                       id="lookback-select"
                       value={lookbackDays}
                       onChange={(e) => setLookbackDays(parseInt(e.target.value))}
-                      className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                      className="w-full px-3 py-2 text-xs rounded-md border border-white/15 bg-white/10 text-slate-100 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
                       disabled={isSyncing}
                     >
                       <option value={1}>1 day</option>
@@ -742,13 +742,13 @@ export default function Dashboard() {
             
             {/* View Selector */}
             <div className="w-full sm:hidden">
-              <label className="text-xs font-medium text-gray-500 block mb-1">
+              <label className="text-xs font-medium text-slate-200 block mb-1">
                 View
               </label>
               <select
                 value={view}
                 onChange={(event) => setView(event.target.value as typeof view)}
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="w-full px-3 py-2 text-sm rounded-md border border-white/15 bg-white/10 text-slate-100 focus:outline-none focus:ring-1 focus:ring-primary"
               >
                 <option value="calendar">Calendar</option>
                 <option value="list">Event List</option>
@@ -756,7 +756,7 @@ export default function Dashboard() {
                 <option value="processing">Processing Dashboard</option>
               </select>
             </div>
-            <div className="hidden sm:flex bg-gray-100 rounded-lg p-1">
+            <div className="hidden sm:flex bg-white/10 rounded-lg p-1">
               <Button
                 variant={view === 'calendar' ? 'default' : 'ghost'}
                 size="sm"
@@ -806,19 +806,19 @@ export default function Dashboard() {
       <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6">
         {/* Processing Status Banner */}
         {isSyncing && (
-          <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4 shadow-sm sm:p-5">
+          <div className="mb-6 rounded-2xl border border-white/12 bg-white/10 p-5 text-slate-100 shadow-[0_25px_55px_-25px_rgba(0,0,0,0.85)] sm:p-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div className="flex items-center gap-3">
                 <div className="flex-shrink-0">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
                 </div>
                 <div>
-                  <h3 className="text-base font-medium text-blue-900 sm:text-lg">
+                  <h3 className="text-base font-medium text-slate-100 sm:text-lg">
                     {processingPhase || 'Processing emails...'}
                   </h3>
                   {processingProgress.total > 0 && (
                     <div className="mt-2 space-y-2">
-                      <div className="flex flex-wrap gap-3 text-sm text-blue-700">
+                      <div className="flex flex-wrap gap-3 text-sm text-slate-200/90">
                         <span>
                           {processingProgress.current} of {processingProgress.total} emails
                         </span>
@@ -833,9 +833,9 @@ export default function Dashboard() {
                           </span>
                         )}
                       </div>
-                      <div className="w-full bg-blue-200 rounded-full h-2">
+                      <div className="w-full h-2 rounded-full bg-white/10">
                         <div
-                          className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
+                          className="h-2 rounded-full bg-primary/70 transition-all duration-300 ease-out"
                           style={{
                             width: `${Math.round((processingProgress.current / processingProgress.total) * 100)}%`
                           }}
@@ -846,7 +846,7 @@ export default function Dashboard() {
                 </div>
               </div>
               <div className="flex items-center gap-2 sm:self-center">
-                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-primary/20 text-primary">
                   Processing
                 </span>
               </div>
@@ -870,9 +870,9 @@ export default function Dashboard() {
         )}
 
         {/* Main Content - Clean and spacious */}
-        <Card className="bg-white shadow-sm">
-          <CardHeader className="border-b border-gray-100 bg-gray-50">
-            <CardTitle className="text-xl text-gray-800">
+        <Card className="shadow-[0_30px_60px_-35px_rgba(0,0,0,0.8)]">
+          <CardHeader className="border-b border-white/10 bg-white/5">
+            <CardTitle className="text-xl text-slate-100">
               {view === 'calendar' ? 'Calendar View' : 
                view === 'list' ? 'Event List' : 
                view === 'summaries' ? 'Email Summaries' :
@@ -900,10 +900,10 @@ export default function Dashboard() {
 
                     if (filteredEvents.length === 0) {
                       return (
-                        <div className="text-center py-16 text-gray-500">
-                          <Mail className="h-20 w-20 mx-auto mb-6 text-gray-300" />
-                          <h3 className="text-lg font-medium text-gray-700 mb-2">No upcoming events</h3>
-                          <p className="text-sm text-gray-500">
+                        <div className="text-center py-16 text-slate-300">
+                          <Mail className="h-20 w-20 mx-auto mb-6 text-slate-500" />
+                          <h3 className="text-lg font-medium text-slate-100 mb-2">No upcoming events</h3>
+                          <p className="text-sm text-slate-300">
                             No events found from 2 days ago onwards. Configure email sources and sync your emails to get started.
                           </p>
                         </div>
@@ -934,13 +934,13 @@ export default function Dashboard() {
                       return (
                         <div key={dateKey} className="space-y-3">
                           {/* Date Header */}
-                          <div className={`sticky top-0 z-10 py-2 px-3 rounded-lg ${
+                          <div className={`sticky top-0 z-10 py-2 px-3 rounded-lg backdrop-blur-xl ${
                             isToday 
-                              ? 'bg-blue-100 border border-blue-200' 
-                              : 'bg-gray-100 border border-gray-200'
+                              ? 'bg-primary/25 border border-primary/35' 
+                              : 'bg-white/8 border border-white/12'
                           }`}>
                             <h3 className={`font-medium text-sm ${
-                              isToday ? 'text-blue-900' : 'text-gray-700'
+                              isToday ? 'text-primary-foreground' : 'text-slate-200'
                             }`}>
                               {dateLabel} {isToday && '📅'}
                               <span className="ml-2 text-xs opacity-75">
@@ -957,20 +957,20 @@ export default function Dashboard() {
                               return (
                                 <div
                                   key={event.id}
-                                  className={`flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4 border rounded-lg cursor-pointer transition-colors ${
+                                  className={`flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4 border rounded-2xl cursor-pointer transition-colors backdrop-blur-xl ${
                                     eventIsToday 
-                                      ? 'border-blue-300 bg-blue-50 hover:bg-blue-100 ring-1 ring-blue-200' 
-                                      : 'border-gray-200 hover:bg-gray-50'
+                                      ? 'border-primary/40 bg-primary/15 hover:bg-primary/20 ring-1 ring-primary/30' 
+                                      : 'border-white/10 bg-white/6 hover:bg-white/10'
                                   }`}
                                   onClick={() => handleEventClick(event)}
                                 >
                                   <div className="flex-1 space-y-2">
                                     <div className="flex flex-wrap items-center gap-2">
-                                      <h3 className={`font-semibold ${eventIsToday ? 'text-blue-900' : ''}`}>
+                                      <h3 className={`font-semibold ${eventIsToday ? 'text-primary-foreground' : 'text-slate-100'}`}>
                                         {event.eventTitle}
                                       </h3>
                                       {eventIsToday && (
-                                        <span className="px-2 py-1 bg-blue-600 text-white text-xs rounded-full font-medium">
+                                        <span className="px-2 py-1 bg-primary text-primary-foreground text-xs rounded-full font-medium">
                                           TODAY
                                         </span>
                                       )}
@@ -987,40 +987,40 @@ export default function Dashboard() {
                                         </div>
                                       )}
                                     </div>
-                                    <p className={`text-sm ${eventIsToday ? 'text-blue-700' : 'text-muted-foreground'}`}>
+                                    <p className={`text-sm ${eventIsToday ? 'text-primary-foreground/80' : 'text-slate-300'}`}>
                                       {event.eventTime && `${event.eventTime}`}
                                     </p>
                                     {event.senderName && (
-                                      <p className={`text-xs mt-1 ${eventIsToday ? 'text-blue-600' : 'text-muted-foreground'}`}>
+                                      <p className={`text-xs mt-1 ${eventIsToday ? 'text-primary-foreground/70' : 'text-slate-300/80'}`}>
                                         From: {event.senderName}
                                       </p>
                                     )}
                                     {event.description && (
-                                      <p className={`text-sm mt-1 ${eventIsToday ? 'text-blue-800' : ''}`}>
+                                      <p className={`text-sm mt-1 ${eventIsToday ? 'text-primary-foreground' : 'text-slate-100'}`}>
                                         {event.description}
                                       </p>
                                     )}
                                     <div className="flex items-center gap-2 mt-2">
                                       {event.googleCalendarSyncStatus === 'synced' && (
-                                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-green-100 text-green-700 text-xs">
+                                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-400/20 text-emerald-100 text-xs">
                                           <CalendarCheck className="h-3 w-3" />
                                           Synced
                                         </span>
                                       )}
                                       {event.googleCalendarSyncStatus === 'pending' && (
-                                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blue-100 text-blue-700 text-xs">
+                                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-primary/25 text-primary text-xs">
                                           <Loader2 className="h-3 w-3 animate-spin" />
                                           Syncing
                                         </span>
                                       )}
                                       {event.googleCalendarSyncStatus === 'error' && (
-                                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-red-100 text-red-700 text-xs">
+                                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-rose-500/20 text-rose-200 text-xs">
                                           <AlertCircle className="h-3 w-3" />
                                           Sync failed
                                         </span>
                                       )}
                                       {event.googleCalendarSyncStatus === 'synced' && event.googleCalendarSyncedAt && (
-                                        <span className="text-[11px] text-muted-foreground">
+                                        <span className="text-[11px] text-slate-300/80">
                                           {`Synced ${event.googleCalendarSyncedAt.toLocaleDateString()}`}
                                         </span>
                                       )}
@@ -1028,12 +1028,12 @@ export default function Dashboard() {
                                   </div>
                                   <div className="flex items-center gap-2 self-start sm:self-auto">
                                     <span
-                                      className={`px-2 py-1 rounded-full text-xs ${
+                                      className={`px-2 py-1 rounded-full text-xs backdrop-blur-xl ${
                                         event.confidenceScore >= 0.9
-                                          ? 'bg-green-100 text-green-800'
+                                          ? 'bg-emerald-400/25 text-emerald-100'
                                           : event.confidenceScore >= 0.8
-                                          ? 'bg-yellow-100 text-yellow-800'
-                                          : 'bg-red-100 text-red-800'
+                                          ? 'bg-amber-400/25 text-amber-100'
+                                          : 'bg-rose-500/25 text-rose-100'
                                       }`}
                                     >
                                       {Math.round(event.confidenceScore * 100)}%
@@ -1042,13 +1042,13 @@ export default function Dashboard() {
                                       variant="ghost"
                                       size="sm"
                                       onClick={(e) => confirmDeleteEvent(event, e)}
-                                      className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                      className="h-8 w-8 p-0 text-rose-300 hover:text-rose-200 hover:bg-white/15"
                                       title="Delete event"
                                     >
                                       <Trash2 className="h-4 w-4" />
                                     </Button>
                                     {event.isVerified && (
-                                      <CheckCircle className="h-4 w-4 text-green-600" />
+                                      <CheckCircle className="h-4 w-4 text-emerald-200" />
                                     )}
                                   </div>
                                 </div>
@@ -1071,10 +1071,10 @@ export default function Dashboard() {
 
       {/* Event Details Modal */}
       {selectedEvent && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-0 sm:p-4">
-          <div className="bg-white h-full w-full overflow-y-auto p-5 sm:max-w-lg sm:rounded-lg sm:max-h-[80vh] sm:p-6">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-0 sm:p-4">
+          <div className="h-full w-full overflow-y-auto rounded-none border-none bg-white/10 p-5 text-slate-100 shadow-[0_35px_75px_-30px_rgba(0,0,0,0.9)] backdrop-blur-2xl sm:max-h-[80vh] sm:max-w-lg sm:rounded-2xl sm:border sm:border-white/12 sm:p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold">Event Details</h2>
+              <h2 className="text-xl font-semibold text-slate-100">Event Details</h2>
               <Button
                 variant="ghost"
                 size="sm"
@@ -1086,10 +1086,10 @@ export default function Dashboard() {
             
             <div className="space-y-4">
               <div>
-                <h3 className="font-semibold text-lg">{selectedEvent.eventTitle}</h3>
+                <h3 className="text-lg font-semibold text-slate-50">{selectedEvent.eventTitle}</h3>
               </div>
               
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <div className="flex items-center gap-2 text-sm text-slate-300">
                 <CalendarIcon className="h-4 w-4" />
                 <span>{formatDate(selectedEvent.eventDate)}</span>
                 {selectedEvent.eventTime && (
@@ -1102,26 +1102,26 @@ export default function Dashboard() {
               
               {selectedEvent.description && (
                 <div>
-                  <h4 className="font-medium mb-1">Description</h4>
-                  <p className="text-sm text-muted-foreground">{selectedEvent.description}</p>
+                  <h4 className="font-medium mb-1 text-slate-100">Description</h4>
+                  <p className="text-sm text-slate-300/90">{selectedEvent.description}</p>
                 </div>
               )}
               
               <div>
-                <h4 className="font-medium mb-2">Email Source</h4>
-                <div className="text-sm text-muted-foreground space-y-2">
+                <h4 className="font-medium mb-2 text-slate-100">Email Source</h4>
+                <div className="text-sm text-slate-300 space-y-2">
                   {selectedEvent.emailSubject && (
                     <div>
-                      <span className="font-medium text-gray-700">Subject: </span>
-                      <span className="text-gray-900">{selectedEvent.emailSubject}</span>
+                      <span className="font-medium text-slate-200">Subject: </span>
+                      <span className="text-slate-50">{selectedEvent.emailSubject}</span>
                     </div>
                   )}
                   
                   <div>
-                    <span className="font-medium text-gray-700">From: </span>
+                    <span className="font-medium text-slate-200">From: </span>
                     <span>{selectedEvent.senderName || selectedEvent.senderEmail}</span>
                     {selectedEvent.senderEmail && selectedEvent.senderName && (
-                      <span className="block text-xs opacity-75 ml-0 mt-1">
+                      <span className="block text-xs opacity-75 ml-0 mt-1 text-slate-400">
                         {selectedEvent.senderEmail}
                       </span>
                     )}
@@ -1129,15 +1129,15 @@ export default function Dashboard() {
                   
                   {selectedEvent.emailSentDate && (
                     <div>
-                      <span className="font-medium text-gray-700">Sent: </span>
-                      <span>{selectedEvent.emailSentDate.toLocaleDateString()} at {selectedEvent.emailSentDate.toLocaleTimeString()}</span>
+                      <span className="font-medium text-slate-200">Sent: </span>
+                      <span className="text-slate-50">{selectedEvent.emailSentDate.toLocaleDateString()} at {selectedEvent.emailSentDate.toLocaleTimeString()}</span>
                     </div>
                   )}
                   
                   {selectedEvent.emailBodyPreview && (
                     <div className="mt-3">
-                      <span className="font-medium text-gray-700 block mb-1">Email Preview:</span>
-                      <div className="bg-gray-50 p-2 rounded text-xs border max-h-20 overflow-y-auto">
+                      <span className="font-medium text-slate-200 block mb-1">Email Preview:</span>
+                      <div className="max-h-20 overflow-y-auto rounded-md border border-white/10 bg-white/8 p-3 text-xs text-slate-200/90">
                         {selectedEvent.emailBodyPreview}
                       </div>
                     </div>
@@ -1146,29 +1146,29 @@ export default function Dashboard() {
               </div>
               
               {selectedEvent.reasoning && (
-                <div className="pt-3 border-t">
-                  <h4 className="font-medium mb-2 text-gray-700">LLM Reasoning</h4>
-                  <div className="bg-blue-50 p-3 rounded text-sm border-l-4 border-blue-400">
-                    <p className="text-gray-800 italic">
+                <div className="pt-3 border-t border-white/10">
+                  <h4 className="font-medium mb-2 text-slate-100">LLM Reasoning</h4>
+                  <div className="rounded-xl border border-white/12 bg-white/8 p-4 text-sm">
+                    <p className="text-slate-100 italic">
                       "{selectedEvent.reasoning}"
                     </p>
-                    <p className="text-xs text-gray-600 mt-2">
+                    <p className="mt-2 text-xs text-slate-300/80">
                       This explains why the AI extracted this specific date from the email content.
                     </p>
                   </div>
                 </div>
               )}
               
-              <div className="flex items-center justify-between pt-4 border-t">
+              <div className="flex items-center justify-between pt-4 border-t border-white/10">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm">Confidence:</span>
+                  <span className="text-sm text-slate-200/90">Confidence:</span>
                   <span
-                    className={`px-2 py-1 rounded-full text-xs ${
+                    className={`px-2 py-1 rounded-full text-xs backdrop-blur-xl ${
                       selectedEvent.confidenceScore >= 0.9
-                        ? 'bg-green-100 text-green-800'
+                        ? 'bg-emerald-400/25 text-emerald-100'
                         : selectedEvent.confidenceScore >= 0.8
-                        ? 'bg-yellow-100 text-yellow-800'
-                        : 'bg-red-100 text-red-800'
+                        ? 'bg-amber-400/25 text-amber-100'
+                        : 'bg-rose-500/25 text-rose-100'
                     }`}
                   >
                     {Math.round(selectedEvent.confidenceScore * 100)}%
@@ -1176,25 +1176,25 @@ export default function Dashboard() {
                 </div>
                 
                 {selectedEvent.isVerified && (
-                  <div className="flex items-center gap-1 text-green-600">
+                  <div className="flex items-center gap-1 text-emerald-200">
                     <CheckCircle className="h-4 w-4" />
                     <span className="text-sm">Verified</span>
                   </div>
                 )}
               </div>
               
-              <div className="text-xs text-muted-foreground">
+              <div className="text-xs text-slate-300/80">
                 Extracted: {selectedEvent.extractedAt.toLocaleDateString()}
               </div>
               
-              <div className="pt-4 border-t mt-4 space-y-3">
+              <div className="pt-4 border-t border-white/10 mt-4 space-y-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                    <div className="flex items-center gap-2 text-sm font-medium text-slate-100">
                       <CalendarIcon className="h-4 w-4" />
                       Google Calendar
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">
+                    <p className="text-xs text-slate-300/80 mt-1">
                       {selectedEvent.googleCalendarSyncStatus === 'synced'
                         ? selectedEvent.googleCalendarSyncedAt
                           ? `Last synced ${selectedEvent.googleCalendarSyncedAt.toLocaleString()}`
@@ -1204,7 +1204,7 @@ export default function Dashboard() {
                         : 'Not yet synced to Google Calendar.'}
                     </p>
                     {selectedEvent.googleCalendarSyncError && (
-                      <p className="text-xs text-red-600 mt-2 flex items-center gap-1">
+                      <p className="text-xs text-rose-300 mt-2 flex items-center gap-1">
                         <AlertCircle className="h-3 w-3" />
                         {selectedEvent.googleCalendarSyncError}
                       </p>
@@ -1215,7 +1215,7 @@ export default function Dashboard() {
                     size="sm"
                     onClick={() => handleSyncToCalendar(selectedEvent)}
                     disabled={calendarSyncingEventId === selectedEvent.id}
-                    className="flex items-center gap-2"
+                    className="flex items-center gap-2 border-white/20 bg-white/10 text-slate-100 hover:bg-white/20"
                   >
                     {calendarSyncingEventId === selectedEvent.id ? (
                       <>
@@ -1255,25 +1255,25 @@ export default function Dashboard() {
 
       {/* Delete Confirmation Modal */}
       {eventToDelete && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-white/12 bg-white/10 p-6 text-slate-100 shadow-[0_35px_75px_-30px_rgba(0,0,0,0.9)] backdrop-blur-2xl">
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-red-100 rounded-full">
-                <Trash2 className="h-5 w-5 text-red-600" />
+              <div className="rounded-full bg-rose-500/25 p-2">
+                <Trash2 className="h-5 w-5 text-rose-200" />
               </div>
               <div>
-                <h2 className="text-lg font-semibold">Delete Event</h2>
-                <p className="text-sm text-gray-600">This action cannot be undone</p>
+                <h2 className="text-lg font-semibold text-slate-100">Delete Event</h2>
+                <p className="text-sm text-slate-300">This action cannot be undone</p>
               </div>
             </div>
             
             <div className="mb-6">
-              <p className="text-sm text-gray-700 mb-2">
+              <p className="text-sm text-slate-200 mb-2">
                 Are you sure you want to delete this event?
               </p>
-              <div className="bg-gray-50 p-3 rounded border">
-                <p className="font-medium">{eventToDelete.eventTitle}</p>
-                <p className="text-sm text-gray-600">
+              <div className="rounded-xl border border-white/12 bg-white/8 p-3">
+                <p className="font-medium text-slate-100">{eventToDelete.eventTitle}</p>
+                <p className="text-sm text-slate-300">
                   {formatDate(eventToDelete.eventDate)}
                   {eventToDelete.eventTime && ` at ${eventToDelete.eventTime}`}
                 </p>
@@ -1284,6 +1284,7 @@ export default function Dashboard() {
               <Button
                 variant="ghost"
                 onClick={cancelDelete}
+                className="text-slate-200 hover:bg-white/10"
               >
                 Cancel
               </Button>
