@@ -4,6 +4,7 @@ import { Button } from './ui/button'
 import Calendar from './ui/calendar'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { Calendar as CalendarIcon, Settings, Mail, Clock, CheckCircle, LogIn, RefreshCw, X, BarChart3, Trash2, FileText, User, Globe, List, MoreVertical, Download, RotateCcw, Key, Activity, Calendar as CalendarIcon2, CheckCircle2, AlertCircle, CalendarCheck, Loader2 } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { ExtractedDate } from '../types'
 import { formatDate } from '../lib/utils'
 import { createGmailService } from '../lib/gmail'
@@ -950,20 +951,39 @@ export default function Dashboard() {
                           </div>
                           
                           {/* Events for this date */}
-                          <div className="space-y-2 mt-3 sm:mt-0 sm:ml-2">
-                            {dayEvents.map((event) => {
-                              const eventIsToday = new Date(event.eventDate).toDateString() === today.toDateString()
-                              
-                              return (
-                                <div
-                                  key={event.id}
-                                  className={`flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4 border rounded-2xl cursor-pointer transition-colors backdrop-blur-xl ${
-                                    eventIsToday 
-                                      ? 'border-primary/40 bg-primary/15 hover:bg-primary/20 ring-1 ring-primary/30' 
-                                      : 'border-white/10 bg-white/6 hover:bg-white/10'
-                                  }`}
-                                  onClick={() => handleEventClick(event)}
-                                >
+                          <div className="relative mt-3 sm:mt-0 sm:ml-2">
+                            <AnimatePresence>
+                              {dayEvents.map((event, index) => {
+                                const eventIsToday = new Date(event.eventDate).toDateString() === today.toDateString()
+                                const stackOffset = Math.min(index * 18, 72)
+
+                                return (
+                                  <motion.div
+                                    key={event.id}
+                                    layout
+                                    custom={index}
+                                    initial={{ opacity: 0, y: 24 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -20 }}
+                                    whileHover={{
+                                      y: -10,
+                                      scale: 1.02,
+                                      zIndex: dayEvents.length + 10,
+                                      boxShadow: '0 40px 80px -50px rgba(7, 38, 45, 0.9)'
+                                    }}
+                                    transition={{ type: 'spring', stiffness: 220, damping: 28, mass: 1 }}
+                                    style={{
+                                      zIndex: dayEvents.length - index,
+                                      marginTop: index === 0 ? 0 : -stackOffset,
+                                      paddingTop: index === 0 ? 0 : stackOffset,
+                                    }}
+                                    className={`relative flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4 border rounded-2xl cursor-pointer transition-colors backdrop-blur-2xl ${
+                                      eventIsToday 
+                                        ? 'border-primary/40 bg-primary/15 hover:bg-primary/20 ring-1 ring-primary/30' 
+                                        : 'border-white/10 bg-white/8 hover:bg-white/12'
+                                    }`}
+                                    onClick={() => handleEventClick(event)}
+                                  >
                                   <div className="flex-1 space-y-2">
                                     <div className="flex flex-wrap items-center gap-2">
                                       <h3 className={`font-semibold ${eventIsToday ? 'text-primary-foreground' : 'text-slate-100'}`}>
@@ -1051,9 +1071,10 @@ export default function Dashboard() {
                                       <CheckCircle className="h-4 w-4 text-emerald-200" />
                                     )}
                                   </div>
-                                </div>
-                              )
-                            })}
+                                  </motion.div>
+                                )
+                              })}
+                            </AnimatePresence>
                           </div>
                         </div>
                       )
