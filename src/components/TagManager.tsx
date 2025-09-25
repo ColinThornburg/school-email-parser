@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Plus, Tag as TagIcon, Trash2, Edit, Check, X, User, Globe } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Tag } from '../types';
+import { useGlassToast } from './ui/glass-toast';
 
 interface TagManagerProps {
   userId: string;
@@ -37,6 +38,15 @@ export default function TagManager({ userId, onTagsUpdated }: TagManagerProps) {
   const [editingColor, setEditingColor] = useState('');
   const [editingEmoji, setEditingEmoji] = useState('');
   const [loading, setLoading] = useState(true);
+  const { addToast } = useGlassToast();
+
+  const notify = useCallback((options: { title?: string; description?: string; variant?: 'info' | 'success' | 'error' }) => {
+    addToast({
+      variant: 'info',
+      durationMs: 4600,
+      ...options
+    });
+  }, [addToast]);
 
   useEffect(() => {
     fetchTags();
@@ -110,11 +120,12 @@ export default function TagManager({ userId, onTagsUpdated }: TagManagerProps) {
       setNewTagColor(DEFAULT_COLORS[0]);
       setNewTagEmoji('');
       setIsAdding(false);
+      notify({ title: 'Tag added', description: newTagName.trim(), variant: 'success' });
       onTagsUpdated?.();
     } catch (error) {
       console.error('Error adding tag:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      alert('Error adding tag: ' + errorMessage);
+      notify({ title: 'Error adding tag', description: errorMessage, variant: 'error' });
     }
   };
 
@@ -152,8 +163,10 @@ export default function TagManager({ userId, onTagsUpdated }: TagManagerProps) {
       setEditingColor('');
       setEditingEmoji('');
       onTagsUpdated?.();
+      notify({ title: 'Tag updated', description: data.name, variant: 'success' });
     } catch (error) {
       console.error('Error updating tag:', error);
+      notify({ title: 'Update failed', description: error instanceof Error ? error.message : 'Unknown error', variant: 'error' });
     }
   };
 
@@ -173,9 +186,11 @@ export default function TagManager({ userId, onTagsUpdated }: TagManagerProps) {
       }
 
       setTags(tags.filter(tag => tag.id !== id));
+      notify({ title: 'Tag deleted', variant: 'info' });
       onTagsUpdated?.();
     } catch (error) {
       console.error('Error deleting tag:', error);
+      notify({ title: 'Delete failed', description: error instanceof Error ? error.message : 'Unknown error', variant: 'error' });
     }
   };
 

@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Plus, Mail, Trash2, Edit, Check, X, Tag as TagIcon, User, Globe } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { EmailSource, Tag } from '../types';
 import TagManager from './TagManager';
+import { useGlassToast } from './ui/glass-toast';
 
 interface EmailSourceManagerProps {
   userId: string;
@@ -22,6 +23,15 @@ export default function EmailSourceManager({ userId, onSourcesUpdated }: EmailSo
   const [editingTagId, setEditingTagId] = useState('');
   const [loading, setLoading] = useState(true);
   const [showTagManager, setShowTagManager] = useState(false);
+  const { addToast } = useGlassToast();
+
+  const notify = useCallback((options: { title?: string; description?: string; variant?: 'info' | 'success' | 'error' }) => {
+    addToast({
+      variant: 'info',
+      durationMs: 4600,
+      ...options
+    });
+  }, [addToast]);
 
   console.log('EmailSourceManager initialized with userId:', userId);
 
@@ -177,11 +187,12 @@ export default function EmailSourceManager({ userId, onSourcesUpdated }: EmailSo
       setNewEmail('');
       setNewTagId('');
       setIsAdding(false);
+      notify({ title: 'Email source added', description: newEmail.trim(), variant: 'success' });
       onSourcesUpdated?.();
     } catch (error) {
       console.error('Error adding source:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      alert('Error adding email source: ' + errorMessage);
+      notify({ title: 'Error adding source', description: errorMessage, variant: 'error' });
     }
   };
 
@@ -237,12 +248,14 @@ export default function EmailSourceManager({ userId, onSourcesUpdated }: EmailSo
       setSources(sources.map(source => 
         source.id === id ? mappedSource : source
       ));
+      notify({ title: 'Email source updated', description: mappedSource.email, variant: 'success' });
       setEditingId(null);
       setEditingEmail('');
       setEditingTagId('');
       onSourcesUpdated?.();
     } catch (error) {
       console.error('Error updating source:', error);
+      notify({ title: 'Update failed', description: error instanceof Error ? error.message : 'Unknown error', variant: 'error' });
     }
   };
 
@@ -290,9 +303,11 @@ export default function EmailSourceManager({ userId, onSourcesUpdated }: EmailSo
       }
 
       setSources(sources.filter(source => source.id !== id));
+      notify({ title: 'Email source deleted', variant: 'info' });
       onSourcesUpdated?.();
     } catch (error) {
       console.error('Error deleting source:', error);
+      notify({ title: 'Delete failed', description: error instanceof Error ? error.message : 'Unknown error', variant: 'error' });
     }
   };
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
 import Calendar from './ui/calendar'
@@ -13,6 +13,7 @@ import { supabase } from '../lib/supabase'
 import EmailSourceManager from './EmailSourceManager'
 import ProcessingDashboard from './ProcessingDashboard'
 import EmailSummaries from './EmailSummaries'
+import { useGlassToast } from './ui/glass-toast'
 
 export default function Dashboard() {
   const [events, setEvents] = useState<ExtractedDate[]>([])
@@ -33,6 +34,18 @@ export default function Dashboard() {
   const [eventToDelete, setEventToDelete] = useState<ExtractedDate | null>(null)
   const [lookbackDays, setLookbackDays] = useState(7)
   const [calendarSyncingEventId, setCalendarSyncingEventId] = useState<string | null>(null)
+  const { addToast } = useGlassToast()
+
+  const notify = useCallback(
+    (options: { title?: string; description?: string; variant?: 'info' | 'success' | 'error'; durationMs?: number }) => {
+      addToast({
+        variant: 'info',
+        durationMs: 5200,
+        ...options
+      })
+    },
+    [addToast]
+  )
 
   const updateEventState = (eventId: string, updater: (current: ExtractedDate) => ExtractedDate) => {
     setEvents(prevEvents => prevEvents.map(event => (event.id === eventId ? updater(event) : event)))
@@ -205,11 +218,20 @@ export default function Dashboard() {
       // Close modals
       setEventToDelete(null)
       setSelectedEvent(null)
-      
+
+      notify({
+        title: 'Event removed',
+        description: event.eventTitle,
+        variant: 'info'
+      })
       console.log(`Successfully deleted event: ${event.eventTitle}`)
     } catch (error) {
       console.error('Error deleting event:', error)
-      alert(`Failed to delete event: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      notify({
+        title: 'Delete failed',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'error'
+      })
     }
   }
 
@@ -224,7 +246,11 @@ export default function Dashboard() {
 
   const handleSyncToCalendar = async (event: ExtractedDate) => {
     if (!user) {
-      alert('Please reconnect your Gmail account before syncing to Google Calendar.')
+      notify({
+        title: 'Reconnect required',
+        description: 'Please re-authenticate Gmail before syncing to Google Calendar.',
+        variant: 'info'
+      })
       return
     }
 
@@ -283,7 +309,11 @@ export default function Dashboard() {
         googleCalendarSyncError: undefined
       }))
 
-      alert('Event synced to Google Calendar.')
+      notify({
+        title: 'Synced to Google Calendar',
+        description: event.eventTitle,
+        variant: 'success'
+      })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error syncing to Google Calendar'
       console.error('Google Calendar sync error:', error)
@@ -294,9 +324,13 @@ export default function Dashboard() {
       }))
       const needsReauth = /expired|invalid|token|refresh/i.test(message)
       const friendlyMessage = needsReauth
-        ? `Google needs a fresh permission slip. Re-authenticate Gmail to renew your access, then try again.\n\nDetails: ${message}`
-        : `Failed to sync event to Google Calendar: ${message}`
-      alert(friendlyMessage)
+        ? 'Google needs a fresh permission slip. Re-authenticate Gmail to renew your access, then try again.'
+        : message
+      notify({
+        title: 'Calendar sync failed',
+        description: friendlyMessage,
+        variant: 'error'
+      })
     } finally {
       setCalendarSyncingEventId(null)
     }
@@ -347,7 +381,11 @@ export default function Dashboard() {
       if (!response.ok) {
         // If we're running locally and the API doesn't exist, show a helpful message
         if (response.status === 404) {
-          alert('API endpoint not available locally. Please test on the deployed Vercel app.')
+          notify({
+            title: 'API unavailable',
+            description: 'Try this action in the deployed Vercel app – the local endpoint is missing.',
+            variant: 'info'
+          })
           return
         }
         throw new Error('Failed to sync emails')
@@ -388,7 +426,11 @@ export default function Dashboard() {
         message += `\nSkipped ${result.skippedDuplicateEvents} duplicate events.`
       }
 
-      alert(message)
+      notify({
+        title: 'Sync complete',
+        description: message.replace(/\n/g, ' '),
+        variant: 'success'
+      })
     } catch (error) {
       console.error('Error syncing emails:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
@@ -405,9 +447,17 @@ export default function Dashboard() {
           errorMessage.includes('forbidden') ||
           errorMessage.includes('scopes') ||
           errorMessage.includes('Authentication failed')) {
-        alert(`Authentication Error: ${errorMessage}\n\nPlease click "Re-authenticate Gmail" to fix permission issues.`)
+        notify({
+          title: 'Authentication error',
+          description: 'Please re-authenticate Gmail to restore permissions, then try again.',
+          variant: 'error'
+        })
       } else {
-        alert(`Error: ${errorMessage}`)
+        notify({
+          title: 'Sync error',
+          description: errorMessage,
+          variant: 'error'
+        })
       }
     } finally {
       setIsSyncing(false)
@@ -446,7 +496,11 @@ export default function Dashboard() {
       if (!response.ok) {
         // If we're running locally and the API doesn't exist, show a helpful message
         if (response.status === 404) {
-          alert('API endpoint not available locally. Please test on the deployed Vercel app.')
+          notify({
+            title: 'API unavailable',
+            description: 'Try this action in the deployed Vercel app – the local endpoint is missing.',
+            variant: 'info'
+          })
           return
         }
         throw new Error('Failed to reprocess emails')
@@ -488,7 +542,11 @@ export default function Dashboard() {
         message += `\nRemoved ${result.duplicatesRemoved} duplicate events during cleanup.`
       }
 
-      alert(message)
+      notify({
+        title: 'Reprocess complete',
+        description: message.replace(/\n/g, ' '),
+        variant: 'success'
+      })
     } catch (error) {
       console.error('Error reprocessing emails:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
@@ -505,9 +563,17 @@ export default function Dashboard() {
           errorMessage.includes('forbidden') ||
           errorMessage.includes('scopes') ||
           errorMessage.includes('Authentication failed')) {
-        alert(`Authentication Error: ${errorMessage}\n\nPlease click "Re-authenticate Gmail" to fix permission issues.`)
+        notify({
+          title: 'Authentication error',
+          description: 'Please re-authenticate Gmail to restore permissions, then try again.',
+          variant: 'error'
+        })
       } else {
-        alert(`Error: ${errorMessage}`)
+        notify({
+          title: 'Reprocess error',
+          description: errorMessage,
+          variant: 'error'
+        })
       }
     } finally {
       setIsSyncing(false)
