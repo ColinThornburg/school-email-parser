@@ -120,15 +120,16 @@ export default function Calendar({ events, onEventClick }: CalendarProps) {
   return (
     <div className="w-full">
       {/* Calendar Header */}
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-xl font-semibold">
+      <div className="flex flex-col gap-3 mb-6 sm:flex-row sm:items-center sm:justify-between">
+        <h2 className="text-lg font-semibold sm:text-xl">
           {formatWeekRange()}
         </h2>
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:gap-2">
           <Button
             variant="outline"
             size="sm"
             onClick={() => navigateWeek('prev')}
+            className="w-full justify-center sm:w-auto"
           >
             <ChevronLeft className="h-4 w-4" />
             Previous Week
@@ -137,6 +138,7 @@ export default function Calendar({ events, onEventClick }: CalendarProps) {
             variant="outline"
             size="sm"
             onClick={goToToday}
+            className="w-full justify-center sm:w-auto"
           >
             This Week
           </Button>
@@ -144,6 +146,7 @@ export default function Calendar({ events, onEventClick }: CalendarProps) {
             variant="outline"
             size="sm"
             onClick={() => navigateWeek('next')}
+            className="w-full justify-center sm:w-auto"
           >
             Next Week
             <ChevronRight className="h-4 w-4" />
@@ -152,7 +155,9 @@ export default function Calendar({ events, onEventClick }: CalendarProps) {
       </div>
 
       {/* Week View */}
-      <div className="grid grid-cols-7 gap-2">
+      <div
+        className="flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory md:grid md:grid-cols-7 md:gap-2 md:overflow-visible md:pb-0"
+      >
         {weekDays.map((date, index) => {
           const dateKey = getDateKey(date)
           const dayEvents = eventsByDate[dateKey] || []
@@ -161,13 +166,14 @@ export default function Calendar({ events, onEventClick }: CalendarProps) {
             <div
               key={index}
               className={`
-                min-h-[200px] p-3 border rounded-lg relative
-                ${isToday(date) ? 'ring-2 ring-primary bg-primary/5' : 'bg-background'}
+                min-w-[220px] shrink-0 p-3 border rounded-lg relative bg-background
+                ${isToday(date) ? 'ring-2 ring-primary bg-primary/5' : ''}
                 ${isPastDate(date) ? 'opacity-60' : ''}
+                md:min-w-0 md:min-h-[220px]
               `}
             >
               {/* Day Header */}
-              <div className="text-center mb-3 pb-2 border-b">
+              <div className="mb-3 pb-2 border-b md:text-center">
                 <div className="text-xs font-medium text-muted-foreground">
                   {dayNames[date.getDay()]}
                 </div>
@@ -246,7 +252,7 @@ export default function Calendar({ events, onEventClick }: CalendarProps) {
       </div>
 
       {/* Legend */}
-      <div className="flex items-center gap-6 mt-6 text-xs">
+      <div className="flex flex-wrap items-center gap-4 mt-6 text-xs sm:gap-6">
         <div className="flex items-center gap-2">
           <div className="w-4 h-4 bg-green-500 rounded border-l-2 border-green-600"></div>
           <span>High Confidence (90%+)</span>

@@ -551,25 +551,25 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Simplified Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div>
+      <div className="bg-white border-b border-gray-200 px-4 py-4 sm:px-6">
+        <div className="max-w-7xl mx-auto flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="w-full sm:w-auto">
             <h1 className="text-2xl font-semibold text-gray-900">School Calendar</h1>
             {user && (
-              <p className="text-sm text-gray-600 mt-1">
+              <p className="text-sm text-gray-600 mt-1 truncate">
                 {user.email}
               </p>
             )}
           </div>
           
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col gap-2 w-full sm:w-auto sm:flex-row sm:items-center sm:gap-3">
             {/* Stats Dropdown */}
             <DropdownMenu.Root>
               <DropdownMenu.Trigger asChild>
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="text-gray-600 hover:text-gray-900"
+                  className="w-full justify-start text-gray-600 hover:text-gray-900 sm:w-auto sm:justify-center"
                 >
                   <Activity className="h-4 w-4 mr-2" />
                   Stats
@@ -645,7 +645,7 @@ export default function Dashboard() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="text-gray-600 hover:text-gray-900"
+                  className="w-full justify-start text-gray-600 hover:text-gray-900 sm:w-auto sm:justify-center"
                 >
                   <MoreVertical className="h-4 w-4 mr-2" />
                   Actions
@@ -741,7 +741,22 @@ export default function Dashboard() {
             </DropdownMenu.Root>
             
             {/* View Selector */}
-            <div className="flex bg-gray-100 rounded-lg p-1">
+            <div className="w-full sm:hidden">
+              <label className="text-xs font-medium text-gray-500 block mb-1">
+                View
+              </label>
+              <select
+                value={view}
+                onChange={(event) => setView(event.target.value as typeof view)}
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                <option value="calendar">Calendar</option>
+                <option value="list">Event List</option>
+                <option value="summaries">Email Summaries</option>
+                <option value="processing">Processing Dashboard</option>
+              </select>
+            </div>
+            <div className="hidden sm:flex bg-gray-100 rounded-lg p-1">
               <Button
                 variant={view === 'calendar' ? 'default' : 'ghost'}
                 size="sm"
@@ -776,29 +791,34 @@ export default function Dashboard() {
               </Button>
             </div>
             
-            <Button onClick={handleLogout} variant="outline" size="sm">
+            <Button
+              onClick={handleLogout}
+              variant="outline"
+              size="sm"
+              className="w-full sm:w-auto"
+            >
               Logout
             </Button>
           </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto p-6">
+      <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6">
         {/* Processing Status Banner */}
         {isSyncing && (
-          <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
+          <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4 shadow-sm sm:p-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex items-center gap-3">
                 <div className="flex-shrink-0">
                   <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
                 </div>
                 <div>
-                  <h3 className="text-lg font-medium text-blue-900">
+                  <h3 className="text-base font-medium text-blue-900 sm:text-lg">
                     {processingPhase || 'Processing emails...'}
                   </h3>
                   {processingProgress.total > 0 && (
-                    <div className="mt-1">
-                      <div className="flex items-center space-x-4 text-sm text-blue-700">
+                    <div className="mt-2 space-y-2">
+                      <div className="flex flex-wrap gap-3 text-sm text-blue-700">
                         <span>
                           {processingProgress.current} of {processingProgress.total} emails
                         </span>
@@ -813,7 +833,7 @@ export default function Dashboard() {
                           </span>
                         )}
                       </div>
-                      <div className="mt-2 w-full bg-blue-200 rounded-full h-2">
+                      <div className="w-full bg-blue-200 rounded-full h-2">
                         <div
                           className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
                           style={{
@@ -825,7 +845,7 @@ export default function Dashboard() {
                   )}
                 </div>
               </div>
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center gap-2 sm:self-center">
                 <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                   Processing
                 </span>
@@ -930,22 +950,22 @@ export default function Dashboard() {
                           </div>
                           
                           {/* Events for this date */}
-                          <div className="space-y-2 ml-2">
+                          <div className="space-y-2 mt-3 sm:mt-0 sm:ml-2">
                             {dayEvents.map((event) => {
                               const eventIsToday = new Date(event.eventDate).toDateString() === today.toDateString()
                               
                               return (
                                 <div
                                   key={event.id}
-                                  className={`flex items-center justify-between p-4 border rounded-lg cursor-pointer transition-colors ${
+                                  className={`flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4 border rounded-lg cursor-pointer transition-colors ${
                                     eventIsToday 
                                       ? 'border-blue-300 bg-blue-50 hover:bg-blue-100 ring-1 ring-blue-200' 
                                       : 'border-gray-200 hover:bg-gray-50'
                                   }`}
                                   onClick={() => handleEventClick(event)}
                                 >
-                                  <div className="flex-1">
-                                    <div className="flex items-center gap-2">
+                                  <div className="flex-1 space-y-2">
+                                    <div className="flex flex-wrap items-center gap-2">
                                       <h3 className={`font-semibold ${eventIsToday ? 'text-blue-900' : ''}`}>
                                         {event.eventTitle}
                                       </h3>
@@ -1006,7 +1026,7 @@ export default function Dashboard() {
                                       )}
                                     </div>
                                   </div>
-                                  <div className="flex items-center gap-2">
+                                  <div className="flex items-center gap-2 self-start sm:self-auto">
                                     <span
                                       className={`px-2 py-1 rounded-full text-xs ${
                                         event.confidenceScore >= 0.9
@@ -1051,8 +1071,8 @@ export default function Dashboard() {
 
       {/* Event Details Modal */}
       {selectedEvent && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 max-w-lg w-full max-h-[80vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-0 sm:p-4">
+          <div className="bg-white h-full w-full overflow-y-auto p-5 sm:max-w-lg sm:rounded-lg sm:max-h-[80vh] sm:p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold">Event Details</h2>
               <Button
