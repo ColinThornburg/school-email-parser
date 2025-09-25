@@ -195,24 +195,24 @@ export default function ProcessingDashboard({ user: propUser }: Props) {
 
   const getStepColor = (step: string | null) => {
     switch (step) {
-      case 'classification': return 'bg-blue-100 text-blue-800';
-      case 'extraction': return 'bg-green-100 text-green-800';
-      case 'fallback': return 'bg-yellow-100 text-yellow-800';
-      case 'email_retrieval': return 'bg-purple-100 text-purple-800';
-      case 'email_analysis': return 'bg-indigo-100 text-indigo-800';
-      case 'email_summary': return 'bg-cyan-100 text-cyan-800';
-      case 'processed': return 'bg-emerald-100 text-emerald-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'classification': return 'bg-sky-400/20 border border-sky-400/35 text-sky-100';
+      case 'extraction': return 'bg-emerald-400/25 border border-emerald-400/35 text-emerald-100';
+      case 'fallback': return 'bg-amber-400/25 border border-amber-400/35 text-amber-100';
+      case 'email_retrieval': return 'bg-purple-400/20 border border-purple-400/35 text-purple-100';
+      case 'email_analysis': return 'bg-indigo-400/25 border border-indigo-400/35 text-indigo-100';
+      case 'email_summary': return 'bg-cyan-400/20 border border-cyan-400/35 text-cyan-100';
+      case 'processed': return 'bg-emerald-400/20 border border-emerald-400/35 text-emerald-100';
+      default: return 'bg-white/10 border border-white/15 text-slate-200';
     }
   };
 
   const getProcessingStatusColor = (status: string) => {
     switch (status) {
-      case 'completed': return 'bg-green-100 text-green-800';
-      case 'failed': return 'bg-red-100 text-red-800';
-      case 'retrieved': return 'bg-blue-100 text-blue-800';
-      case 'processing': return 'bg-yellow-100 text-yellow-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'completed': return 'bg-emerald-400/25 border border-emerald-400/35 text-emerald-100';
+      case 'failed': return 'bg-rose-500/25 border border-rose-500/35 text-rose-100';
+      case 'retrieved': return 'bg-sky-400/20 border border-sky-400/35 text-sky-100';
+      case 'processing': return 'bg-amber-400/25 border border-amber-400/35 text-amber-100';
+      default: return 'bg-white/10 border border-white/15 text-slate-200';
     }
   };
 
@@ -237,7 +237,7 @@ export default function ProcessingDashboard({ user: propUser }: Props) {
       <div className="p-4">
         <Card className="border-red-200 bg-red-50">
           <CardContent className="p-4">
-            <p className="text-red-800">Error: {error}</p>
+            <p className="text-rose-100">Error: {error}</p>
             <Button 
               onClick={() => loadDashboardData(currentPage * 10)} 
               className="mt-2"
@@ -259,7 +259,7 @@ export default function ProcessingDashboard({ user: propUser }: Props) {
       <div className="p-6">
         <Card className="border-blue-200 bg-blue-50">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-blue-800">
+            <CardTitle className="flex items-center gap-2 text-sky-100">
               📊 Dashboard Setup Required
             </CardTitle>
           </CardHeader>
@@ -268,8 +268,8 @@ export default function ProcessingDashboard({ user: propUser }: Props) {
               <p className="text-blue-700">
                 {dashboardData.message || 'Processing dashboard is not yet available.'}
               </p>
-              <div className="bg-white border border-blue-200 rounded-lg p-4">
-                <h4 className="font-medium text-blue-800 mb-2">To enable dashboard tracking:</h4>
+              <div className="bg-white/12 border border-white/20 rounded-lg p-4 backdrop-blur-xl">
+                <h4 className="font-medium text-sky-100 mb-2">To enable dashboard tracking:</h4>
                 <ol className="list-decimal list-inside space-y-1 text-sm text-blue-700">
                   <li>Go to your Supabase SQL Editor</li>
                   <li>Run the updated <code className="bg-blue-100 px-1 rounded">supabase-schema.sql</code> file</li>
@@ -346,7 +346,7 @@ export default function ProcessingDashboard({ user: propUser }: Props) {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{summary.totalSessions}</div>
-            <p className="text-xs text-gray-600">
+            <p className="text-xs text-slate-300">
               {summary.last30Days.sessions} in last 30 days
             </p>
           </CardContent>
@@ -358,7 +358,7 @@ export default function ProcessingDashboard({ user: propUser }: Props) {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{summary.totalEmailsProcessed.toLocaleString()}</div>
-            <p className="text-xs text-gray-600">
+            <p className="text-xs text-slate-300">
               {summary.last30Days.emails} in last 30 days
             </p>
           </CardContent>
@@ -370,7 +370,7 @@ export default function ProcessingDashboard({ user: propUser }: Props) {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{summary.totalEventsExtracted.toLocaleString()}</div>
-            <p className="text-xs text-gray-600">
+            <p className="text-xs text-slate-300">
               {summary.last30Days.events} in last 30 days
             </p>
           </CardContent>
@@ -382,7 +382,7 @@ export default function ProcessingDashboard({ user: propUser }: Props) {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatCurrency(summary.totalCost)}</div>
-            <p className="text-xs text-gray-600">
+            <p className="text-xs text-slate-300">
               {formatCurrency(summary.averageCostPerEmail)} per email
             </p>
           </CardContent>
@@ -397,7 +397,7 @@ export default function ProcessingDashboard({ user: propUser }: Props) {
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {Object.entries(summary.providerBreakdown).map(([provider, stats]) => (
-              <div key={provider} className="p-4 border rounded-lg">
+              <div key={provider} className="p-4 border border-white/15 rounded-xl bg-white/8 backdrop-blur-xl">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-lg">{getProviderIcon(provider)}</span>
                   <h3 className="font-semibold capitalize">{provider}</h3>
@@ -423,7 +423,7 @@ export default function ProcessingDashboard({ user: propUser }: Props) {
         <CardContent>
           <div className="space-y-4">
             {sessions.map((session) => (
-              <div key={session.id} className="border rounded-lg p-4">
+              <div key={session.id} className="border border-white/15 rounded-xl p-4 bg-white/8 backdrop-blur-xl">
                 {isEmailSession(session) ? (
                   // Enhanced email processing view
                   <>
@@ -436,10 +436,10 @@ export default function ProcessingDashboard({ user: propUser }: Props) {
                             {session.email_data.processing_status}
                           </span>
                           {session.email_data.has_attachments && (
-                            <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">📎 Attachments</span>
+                            <span className="text-xs bg-sky-400/20 border border-sky-400/35 text-sky-100 px-2 py-1 rounded">📎 Attachments</span>
                           )}
                         </div>
-                        <div className="space-y-1 text-sm text-gray-600">
+                        <div className="space-y-1 text-sm text-slate-300">
                           <p><strong>From:</strong> {session.email_data.sender_email}</p>
                           <p><strong>Sent:</strong> {formatDate(session.email_data.sent_date)}</p>
                           <p><strong>Processed:</strong> {formatDate(session.started_at)}</p>
@@ -450,11 +450,11 @@ export default function ProcessingDashboard({ user: propUser }: Props) {
                       </div>
                       <div className="text-right ml-4">
                         <p className="font-semibold text-lg">{formatCurrency(session.total_cost)}</p>
-                        <p className="text-sm text-gray-600">
+                        <p className="text-sm text-slate-300">
                           {session.total_events_extracted} events extracted
                         </p>
                         {session.email_data.average_confidence_score && (
-                          <p className="text-xs text-gray-500">
+                          <p className="text-xs text-slate-400">
                             Avg confidence: {(session.email_data.average_confidence_score * 100).toFixed(1)}%
                           </p>
                         )}
@@ -462,29 +462,29 @@ export default function ProcessingDashboard({ user: propUser }: Props) {
                     </div>
 
                     {/* Processing stats */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-3 bg-gray-50 p-3 rounded">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-3 bg-white/10 p-3 rounded-lg border border-white/15">
                       <div>
-                        <p className="text-gray-600">Processing Time</p>
+                        <p className="text-slate-300">Processing Time</p>
                         <p className="font-medium">{formatDuration(session.email_data.processing_time_ms)}</p>
                       </div>
                       <div>
-                        <p className="text-gray-600">Tokens Used</p>
+                        <p className="text-slate-300">Tokens Used</p>
                         <p className="font-medium">{session.email_data.total_tokens_used.toLocaleString()}</p>
                       </div>
                       <div>
-                        <p className="text-gray-600">LLM Providers</p>
+                        <p className="text-slate-300">LLM Providers</p>
                         <p className="font-medium">{session.email_data.llm_providers_used || 'N/A'}</p>
                       </div>
                       <div>
-                        <p className="text-gray-600">Models</p>
+                        <p className="text-slate-300">Models</p>
                         <p className="font-medium text-xs">{session.email_data.models_used || 'N/A'}</p>
                       </div>
                     </div>
 
                     {/* Error message if any */}
                     {session.email_data.processing_error_message && (
-                      <div className="bg-red-50 border border-red-200 rounded p-2 mb-3">
-                        <p className="text-red-800 text-sm">{session.email_data.processing_error_message}</p>
+                      <div className="bg-rose-500/15 border border-rose-500/30 rounded p-2 mb-3">
+                        <p className="text-rose-100 text-sm">{session.email_data.processing_error_message}</p>
                       </div>
                     )}
 
@@ -494,18 +494,18 @@ export default function ProcessingDashboard({ user: propUser }: Props) {
                         <h4 className="font-medium text-sm mb-2">Extracted Events ({session.extracted_events.length}):</h4>
                         <div className="space-y-2">
                           {session.extracted_events.map((event, index) => (
-                            <div key={index} className="bg-green-50 border border-green-200 rounded p-2 text-sm">
+                            <div key={index} className="bg-white/10 border border-white/12 rounded p-2 text-sm">
                               <div className="flex justify-between items-start">
                                 <div>
                                   <p className="font-medium">{event.event_title}</p>
-                                  <p className="text-gray-600">
+                                  <p className="text-slate-300">
                                     {formatDate(event.event_date)} {event.event_time && `at ${event.event_time}`}
                                   </p>
                                   {event.description && (
-                                    <p className="text-gray-500 text-xs mt-1">{event.description}</p>
+                                    <p className="text-slate-400 text-xs mt-1">{event.description}</p>
                                   )}
                                 </div>
-                                <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
+                                <span className="text-xs bg-emerald-400/25 border border-emerald-400/35 text-emerald-100 px-2 py-1 rounded">
                                   {(event.confidence_score * 100).toFixed(0)}%
                                 </span>
                               </div>
@@ -524,25 +524,25 @@ export default function ProcessingDashboard({ user: propUser }: Props) {
                           <span className={`px-2 py-1 rounded text-xs font-medium ${
                             session.session_type === 'reprocess' 
                               ? 'bg-orange-100 text-orange-800' 
-                              : 'bg-blue-100 text-blue-800'
+                              : 'bg-sky-400/20 border border-sky-400/35 text-sky-100'
                           }`}>
                             {session.session_type}
                           </span>
                           <span className={`px-2 py-1 rounded text-xs ${
                             session.success_status 
-                              ? 'bg-green-100 text-green-800' 
-                              : 'bg-red-100 text-red-800'
+                              ? 'bg-emerald-400/25 border border-emerald-400/35 text-emerald-100' 
+                              : 'bg-rose-500/25 border border-rose-500/35 text-rose-100'
                           }`}>
                             {session.success_status ? 'Success' : 'Failed'}
                           </span>
                         </div>
-                        <p className="text-sm text-gray-600 mt-1">
+                        <p className="text-sm text-slate-300 mt-1">
                           {formatDate(session.started_at)}
                         </p>
                       </div>
                       <div className="text-right">
                         <p className="font-semibold">{formatCurrency(session.total_cost)}</p>
-                        <p className="text-sm text-gray-600">
+                        <p className="text-sm text-slate-300">
                           {session.total_emails_processed} emails → {session.total_events_extracted} events
                         </p>
                       </div>
@@ -554,19 +554,19 @@ export default function ProcessingDashboard({ user: propUser }: Props) {
                   <>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-3">
                       <div>
-                        <p className="text-gray-600">Lookback</p>
+                        <p className="text-slate-300">Lookback</p>
                         <p className="font-medium">{session.lookback_days} days</p>
                       </div>
                       <div>
-                        <p className="text-gray-600">Mode</p>
+                        <p className="text-slate-300">Mode</p>
                         <p className="font-medium">{session.processing_mode}</p>
                       </div>
                       <div>
-                        <p className="text-gray-600">Duplicates Removed</p>
+                        <p className="text-slate-300">Duplicates Removed</p>
                         <p className="font-medium">{session.duplicates_removed}</p>
                       </div>
                       <div>
-                        <p className="text-gray-600">Skipped</p>
+                        <p className="text-slate-300">Skipped</p>
                         <p className="font-medium">
                           {session.skipped_duplicate_emails + session.skipped_duplicate_events}
                         </p>
@@ -574,8 +574,8 @@ export default function ProcessingDashboard({ user: propUser }: Props) {
                     </div>
 
                     {session.error_message && (
-                      <div className="bg-red-50 border border-red-200 rounded p-2 mb-3">
-                        <p className="text-red-800 text-sm">{session.error_message}</p>
+                      <div className="bg-rose-500/15 border border-rose-500/30 rounded p-2 mb-3">
+                        <p className="text-rose-100 text-sm">{session.error_message}</p>
                       </div>
                     )}
                   </>
@@ -603,7 +603,7 @@ export default function ProcessingDashboard({ user: propUser }: Props) {
                               {session.processing_history
                                 .filter(item => item.llm_provider === 'email_processing')
                                 .map((item) => (
-                                  <div key={item.id} className="p-3 bg-blue-50 border border-blue-200 rounded text-sm">
+                                  <div key={item.id} className="p-3 bg-sky-400/20 border border-sky-400/35 rounded text-sm">
                                     <div className="flex items-start justify-between">
                                       <div className="flex-1">
                                         <div className="flex items-center gap-2 mb-1">
@@ -614,16 +614,16 @@ export default function ProcessingDashboard({ user: propUser }: Props) {
                                           </span>
                                         </div>
                                         {(item as any).processed_emails && (
-                                          <div className="text-gray-700 ml-6">
+                                          <div className="text-slate-200 ml-6">
                                             <p className="font-medium">"{(item as any).processed_emails.subject}"</p>
-                                            <p className="text-xs text-gray-600">
+                                            <p className="text-xs text-slate-300">
                                               From: {(item as any).processed_emails.sender_email} | 
                                               {new Date((item as any).processed_emails.sent_date).toLocaleDateString()}
                                             </p>
                                           </div>
                                         )}
                                         {item.confidence_score && (
-                                          <p className="text-xs text-gray-600 ml-6">
+                                          <p className="text-xs text-slate-300 ml-6">
                                             Avg confidence: {(item.confidence_score * 100).toFixed(1)}%
                                           </p>
                                         )}
@@ -632,7 +632,7 @@ export default function ProcessingDashboard({ user: propUser }: Props) {
                                         <p className="font-medium text-blue-700">
                                           {item.output_tokens || 0} events extracted
                                         </p>
-                                        <p className="text-xs text-gray-600">
+                                        <p className="text-xs text-slate-300">
                                           {formatDuration(item.processing_time)}
                                         </p>
                                       </div>
@@ -644,12 +644,12 @@ export default function ProcessingDashboard({ user: propUser }: Props) {
                               {session.processing_history
                                 .filter(item => item.llm_provider !== 'email_processing')
                                 .map((item) => (
-                                  <div key={item.id} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
+                                  <div key={item.id} className="flex items-center justify-between p-2 bg-white/10 rounded text-sm">
                                     <div className="flex items-center gap-2">
                                       <span>{getProviderIcon(item.llm_provider)}</span>
                                       <span className="font-medium">{item.llm_provider}</span>
                                       {item.model_name && (
-                                        <span className="text-gray-600">({item.model_name})</span>
+                                        <span className="text-slate-300">({item.model_name})</span>
                                       )}
                                       {item.processing_step && (
                                         <span className={`px-2 py-1 rounded text-xs ${getStepColor(item.processing_step)}`}>
@@ -665,7 +665,7 @@ export default function ProcessingDashboard({ user: propUser }: Props) {
                                     <div className="flex items-center gap-4 text-right">
                                       <div>
                                         <p>{item.total_tokens.toLocaleString()} tokens</p>
-                                        <p className="text-gray-600">{formatDuration(item.processing_time)}</p>
+                                        <p className="text-slate-300">{formatDuration(item.processing_time)}</p>
                                       </div>
                                       <div>
                                         <p className="font-medium">{formatCurrency(item.cost)}</p>
@@ -678,7 +678,7 @@ export default function ProcessingDashboard({ user: propUser }: Props) {
                                 ))}
                             </>
                           ) : (
-                            <p className="text-gray-500 text-sm">No processing history available</p>
+                            <p className="text-slate-400 text-sm">No processing history available</p>
                           )}
                         </div>
                       </div>
@@ -698,7 +698,7 @@ export default function ProcessingDashboard({ user: propUser }: Props) {
             >
               Previous
             </Button>
-            <span className="text-sm text-gray-600">
+            <span className="text-sm text-slate-300">
               Page {currentPage + 1}
             </span>
             <Button
