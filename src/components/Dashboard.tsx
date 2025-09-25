@@ -951,36 +951,39 @@ export default function Dashboard() {
                           </div>
                           
                           {/* Events for this date */}
-                          <div className="relative mt-3 sm:mt-0 sm:ml-2">
+                          <div className="relative mt-3 space-y-4 sm:mt-0 sm:ml-2">
                             <AnimatePresence>
                               {dayEvents.map((event, index) => {
                                 const eventIsToday = new Date(event.eventDate).toDateString() === today.toDateString()
-                                const stackOffset = Math.min(index * 18, 72)
+                                const stackDepth = dayEvents.length - index
 
                                 return (
                                   <motion.div
                                     key={event.id}
                                     layout
                                     custom={index}
-                                    initial={{ opacity: 0, y: 24 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    exit={{ opacity: 0, y: -20 }}
+                                    initial={{ opacity: 0, y: 24, scale: 0.98, filter: 'blur(2px)' }}
+                                    animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
+                                    exit={{ opacity: 0, y: -20, scale: 0.96, filter: 'blur(2px)' }}
                                     whileHover={{
-                                      y: -10,
-                                      scale: 1.02,
-                                      zIndex: dayEvents.length + 10,
-                                      boxShadow: '0 40px 80px -50px rgba(7, 38, 45, 0.9)'
+                                      y: -8,
+                                      scale: 1.03,
+                                      boxShadow: '0 45px 90px -45px rgba(4, 33, 41, 0.95)',
+                                      background: eventIsToday
+                                        ? 'linear-gradient(135deg, rgba(11,139,153,0.4), rgba(6,84,93,0.65))'
+                                        : 'linear-gradient(135deg, rgba(255,255,255,0.18), rgba(39,183,183,0.15))',
+                                      borderColor: eventIsToday ? 'rgba(25, 167, 179, 0.55)' : 'rgba(255,255,255,0.35)'
                                     }}
                                     transition={{ type: 'spring', stiffness: 220, damping: 28, mass: 1 }}
                                     style={{
-                                      zIndex: dayEvents.length - index,
-                                      marginTop: index === 0 ? 0 : -stackOffset,
-                                      paddingTop: index === 0 ? 0 : stackOffset,
+                                      zIndex: stackDepth,
+                                      marginLeft: index * 8,
+                                      marginRight: index * 6,
                                     }}
                                     className={`relative flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4 border rounded-2xl cursor-pointer transition-colors backdrop-blur-2xl ${
                                       eventIsToday 
-                                        ? 'border-primary/40 bg-primary/15 hover:bg-primary/20 ring-1 ring-primary/30' 
-                                        : 'border-white/10 bg-white/8 hover:bg-white/12'
+                                        ? 'border-primary/45 bg-primary/20 ring-1 ring-primary/25' 
+                                        : 'border-white/14 bg-white/10'
                                     }`}
                                     onClick={() => handleEventClick(event)}
                                   >
