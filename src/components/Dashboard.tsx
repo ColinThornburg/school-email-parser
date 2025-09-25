@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
 import Calendar from './ui/calendar'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
-import { Calendar as CalendarIcon, Settings, Mail, Clock, CheckCircle, LogIn, RefreshCw, X, BarChart3, Trash2, FileText, User, Globe, List, MoreVertical, Download, RotateCcw, Key, Activity, Calendar as CalendarIcon2, CheckCircle2, AlertCircle } from 'lucide-react'
+import { Calendar as CalendarIcon, Settings, Mail, Clock, CheckCircle, LogIn, RefreshCw, X, BarChart3, Trash2, FileText, User, Globe, List, MoreVertical, Download, RotateCcw, Key, Activity, Calendar as CalendarIcon2, CheckCircle2, AlertCircle, CalendarCheck, Loader2 } from 'lucide-react'
 import { ExtractedDate } from '../types'
 import { formatDate } from '../lib/utils'
 import { createGmailService } from '../lib/gmail'
@@ -30,6 +30,12 @@ export default function Dashboard() {
   const [selectedEvent, setSelectedEvent] = useState<ExtractedDate | null>(null)
   const [eventToDelete, setEventToDelete] = useState<ExtractedDate | null>(null)
   const [lookbackDays, setLookbackDays] = useState(7)
+  const [calendarSyncingEventId, setCalendarSyncingEventId] = useState<string | null>(null)
+
+  const updateEventState = (eventId: string, updater: (current: ExtractedDate) => ExtractedDate) => {
+    setEvents(prevEvents => prevEvents.map(event => (event.id === eventId ? updater(event) : event)))
+    setSelectedEvent(prevSelected => (prevSelected && prevSelected.id === eventId ? updater(prevSelected) : prevSelected))
+  }
 
   useEffect(() => {
     // Check if user is authenticated
@@ -128,7 +134,11 @@ export default function Dashboard() {
         
         // Handle both array and object cases for tags
         const tagData = Array.isArray(tag) ? tag[0] : tag;
-        
+
+        const syncedAt = event.google_calendar_synced_at
+          ? new Date(event.google_calendar_synced_at)
+          : undefined
+
         return {
           ...event,
           eventDate: new Date(event.event_date + 'T00:00:00'), // Add time to avoid timezone issues
@@ -149,7 +159,11 @@ export default function Dashboard() {
             emoji: tagData.emoji,
             createdAt: new Date(),
             updatedAt: new Date()
-          } : undefined
+          } : undefined,
+          googleCalendarEventId: event.google_calendar_event_id || undefined,
+          googleCalendarSyncedAt: syncedAt,
+          googleCalendarSyncStatus: event.google_calendar_sync_status || undefined,
+          googleCalendarSyncError: event.google_calendar_sync_error || undefined
         }
       })
 
@@ -204,6 +218,82 @@ export default function Dashboard() {
 
   const cancelDelete = () => {
     setEventToDelete(null)
+  }
+
+  const handleSyncToCalendar = async (event: ExtractedDate) => {
+    if (!user) {
+      alert('Please reconnect your Gmail account before syncing to Google Calendar.')
+      return
+    }
+
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+    const eventDateString = event.eventDate instanceof Date
+      ? event.eventDate.toISOString().split('T')[0]
+      : new Date(event.eventDate).toISOString().split('T')[0]
+
+    setCalendarSyncingEventId(event.id)
+    updateEventState(event.id, current => ({
+      ...current,
+      googleCalendarSyncStatus: 'pending',
+      googleCalendarSyncError: undefined
+    }))
+
+    try {
+      const response = await fetch('/api/sync-calendar-event', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          userId: user.id,
+          accessToken: user.accessToken,
+          refreshToken: user.refreshToken,
+          timeZone,
+          event: {
+            id: event.id,
+            title: event.eventTitle,
+            date: eventDateString,
+            time: event.eventTime || null,
+            description: event.description || null,
+            emailSubject: event.emailSubject || null,
+            location: undefined,
+            durationMinutes: event.eventTime ? 60 : null,
+            calendarEventId: event.googleCalendarEventId || null
+          }
+        })
+      })
+
+      const result = await response.json().catch(() => ({}))
+
+      if (!response.ok) {
+        const message = result.error || 'Failed to sync event to Google Calendar'
+        throw new Error(message)
+      }
+
+      const calendarEventId = result.calendarEventId || event.googleCalendarEventId
+      const syncedAt = new Date()
+
+      updateEventState(event.id, current => ({
+        ...current,
+        googleCalendarEventId: calendarEventId,
+        googleCalendarSyncedAt: syncedAt,
+        googleCalendarSyncStatus: 'synced',
+        googleCalendarSyncError: undefined
+      }))
+
+      alert('Event synced to Google Calendar.')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error syncing to Google Calendar'
+      console.error('Google Calendar sync error:', error)
+      updateEventState(event.id, current => ({
+        ...current,
+        googleCalendarSyncStatus: 'error',
+        googleCalendarSyncError: message
+      }))
+      alert(`Failed to sync event to Google Calendar: ${message}`)
+    } finally {
+      setCalendarSyncingEventId(null)
+    }
   }
 
   const handleGmailAuth = () => {
@@ -890,6 +980,31 @@ export default function Dashboard() {
                                         {event.description}
                                       </p>
                                     )}
+                                    <div className="flex items-center gap-2 mt-2">
+                                      {event.googleCalendarSyncStatus === 'synced' && (
+                                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-green-100 text-green-700 text-xs">
+                                          <CalendarCheck className="h-3 w-3" />
+                                          Synced
+                                        </span>
+                                      )}
+                                      {event.googleCalendarSyncStatus === 'pending' && (
+                                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blue-100 text-blue-700 text-xs">
+                                          <Loader2 className="h-3 w-3 animate-spin" />
+                                          Syncing
+                                        </span>
+                                      )}
+                                      {event.googleCalendarSyncStatus === 'error' && (
+                                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-red-100 text-red-700 text-xs">
+                                          <AlertCircle className="h-3 w-3" />
+                                          Sync failed
+                                        </span>
+                                      )}
+                                      {event.googleCalendarSyncStatus === 'synced' && event.googleCalendarSyncedAt && (
+                                        <span className="text-[11px] text-muted-foreground">
+                                          {`Synced ${event.googleCalendarSyncedAt.toLocaleDateString()}`}
+                                        </span>
+                                      )}
+                                    </div>
                                   </div>
                                   <div className="flex items-center gap-2">
                                     <span
@@ -1052,16 +1167,66 @@ export default function Dashboard() {
                 Extracted: {selectedEvent.extractedAt.toLocaleDateString()}
               </div>
               
-              <div className="flex items-center gap-2 pt-4 border-t mt-4">
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => confirmDeleteEvent(selectedEvent)}
-                  className="flex items-center gap-2"
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Delete Event
-                </Button>
+              <div className="pt-4 border-t mt-4 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                      <CalendarIcon className="h-4 w-4" />
+                      Google Calendar
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {selectedEvent.googleCalendarSyncStatus === 'synced'
+                        ? selectedEvent.googleCalendarSyncedAt
+                          ? `Last synced ${selectedEvent.googleCalendarSyncedAt.toLocaleString()}`
+                          : 'Synced to Google Calendar.'
+                        : selectedEvent.googleCalendarSyncStatus === 'pending'
+                        ? 'Syncing with Google Calendar...'
+                        : 'Not yet synced to Google Calendar.'}
+                    </p>
+                    {selectedEvent.googleCalendarSyncError && (
+                      <p className="text-xs text-red-600 mt-2 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        {selectedEvent.googleCalendarSyncError}
+                      </p>
+                    )}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleSyncToCalendar(selectedEvent)}
+                    disabled={calendarSyncingEventId === selectedEvent.id}
+                    className="flex items-center gap-2"
+                  >
+                    {calendarSyncingEventId === selectedEvent.id ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Syncing...
+                      </>
+                    ) : selectedEvent.googleCalendarSyncStatus === 'synced' ? (
+                      <>
+                        <CalendarCheck className="h-4 w-4" />
+                        Update Calendar Event
+                      </>
+                    ) : (
+                      <>
+                        <CalendarIcon className="h-4 w-4" />
+                        Sync to Google Calendar
+                      </>
+                    )}
+                  </Button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => confirmDeleteEvent(selectedEvent)}
+                    className="flex items-center gap-2"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete Event
+                  </Button>
+                </div>
               </div>
             </div>
           </div>

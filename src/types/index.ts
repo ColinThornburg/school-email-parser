@@ -63,6 +63,11 @@ export interface ExtractedDate {
   reasoning?: string
   // Tag information from email source
   tag?: Tag
+  // Google Calendar sync metadata
+  googleCalendarEventId?: string
+  googleCalendarSyncedAt?: Date
+  googleCalendarSyncStatus?: 'pending' | 'synced' | 'error'
+  googleCalendarSyncError?: string
 }
 
 export interface ProcessingHistory {

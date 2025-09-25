@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronLeft, ChevronRight, Clock } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Clock, CalendarCheck, AlertCircle, Loader2 } from 'lucide-react'
 import { Button } from './button'
 import { ExtractedDate } from '../../types'
 
@@ -199,12 +199,25 @@ export default function Calendar({ events, onEventClick }: CalendarProps) {
                     onClick={() => onEventClick?.(event)}
                     title={`${event.eventTitle}\n${event.description || ''}\nConfidence: ${Math.round(event.confidenceScore * 100)}%`}
                   >
-                    {event.eventTime && (
-                      <div className="flex items-center gap-1 mb-1 font-medium">
-                        <Clock className="h-3 w-3 flex-shrink-0" />
-                        <span>{event.eventTime}</span>
-                      </div>
-                    )}
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      {event.eventTime ? (
+                        <div className="flex items-center gap-1 font-medium">
+                          <Clock className="h-3 w-3 flex-shrink-0" />
+                          <span>{event.eventTime}</span>
+                        </div>
+                      ) : (
+                        <span className="text-[10px] uppercase tracking-wide opacity-70">All day</span>
+                      )}
+                      {event.googleCalendarSyncStatus === 'synced' && (
+                        <CalendarCheck className="h-3 w-3 text-green-700 flex-shrink-0" />
+                      )}
+                      {event.googleCalendarSyncStatus === 'pending' && (
+                        <Loader2 className="h-3 w-3 text-blue-700 flex-shrink-0 animate-spin" />
+                      )}
+                      {event.googleCalendarSyncStatus === 'error' && (
+                        <AlertCircle className="h-3 w-3 text-red-700 flex-shrink-0" />
+                      )}
+                    </div>
                     <div className="font-medium leading-tight">
                       {event.eventTitle || event.description || 'Untitled Event'}
                     </div>

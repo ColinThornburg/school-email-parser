@@ -211,7 +211,8 @@ export const createGmailService = (): GmailService => {
     redirectUri: `${window.location.origin}/auth/callback`,
     scopes: [
       'https://www.googleapis.com/auth/gmail.readonly',
-      'https://www.googleapis.com/auth/userinfo.email'
+      'https://www.googleapis.com/auth/userinfo.email',
+      'https://www.googleapis.com/auth/calendar.events'
     ]
   };
 

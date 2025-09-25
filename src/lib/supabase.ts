@@ -138,6 +138,10 @@ export type Database = {
           extracted_at: string
           is_verified: boolean
           reasoning: string | null
+          google_calendar_event_id: string | null
+          google_calendar_synced_at: string | null
+          google_calendar_sync_status: string | null
+          google_calendar_sync_error: string | null
         }
         Insert: {
           id?: string
@@ -151,6 +155,10 @@ export type Database = {
           extracted_at?: string
           is_verified?: boolean
           reasoning?: string | null
+          google_calendar_event_id?: string | null
+          google_calendar_synced_at?: string | null
+          google_calendar_sync_status?: string | null
+          google_calendar_sync_error?: string | null
         }
         Update: {
           id?: string
@@ -164,6 +172,10 @@ export type Database = {
           extracted_at?: string
           is_verified?: boolean
           reasoning?: string | null
+          google_calendar_event_id?: string | null
+          google_calendar_synced_at?: string | null
+          google_calendar_sync_status?: string | null
+          google_calendar_sync_error?: string | null
         }
       }
       processing_history: {
