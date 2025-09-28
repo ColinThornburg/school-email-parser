@@ -1,5 +1,6 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
+import { prompts } from '../config/prompts';
 
 const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY!;
@@ -163,45 +164,11 @@ class OpenAIService implements SummaryProvider {
   }
 
   private createSummaryPrompt(emailContent: EmailContent): string {
-    return `Create a comprehensive summary of this school email:
-
-Email Details:
-- Sent Date: ${emailContent.sentDate}
-- From: ${emailContent.senderEmail}  
-- Subject: ${emailContent.subject}
-
-Email Content:
-${emailContent.body}
-
-Instructions:
-1. Extract key points as clear, concise bullet points
-2. Identify important dates with their original context (e.g., "Lunch on Thursday is chicken nuggets")
-3. List actionable items that require parent/student response
-4. Categorize the email type (e.g., "Academic", "Events", "Administrative", "Food Service", "Transportation")
-5. Provide a confidence score (0-1) for the summary accuracy
-
-Return a JSON object with this exact structure:
-{
-  "keyPoints": [
-    "Clear, concise summary points about the main content",
-    "Include important details and context"
-  ],
-  "importantDates": [
-    {
-      "date": "2024-03-15", 
-      "description": "Event or deadline description",
-      "originalText": "Original text from email mentioning this date"
-    }
-  ],
-  "actionItems": [
-    "Things that require parent/student action",
-    "Deadlines or responses needed"
-  ],
-  "categories": ["Primary category", "Secondary category"],
-  "confidence": 0.95
-}
-
-Focus on being comprehensive yet concise. Keep the original context and tone when possible.`;
+    return prompts.summaryPrompt
+      .replace('{{sentDate}}', emailContent.sentDate)
+      .replace('{{senderEmail}}', emailContent.senderEmail)
+      .replace('{{subject}}', emailContent.subject)
+      .replace('{{body}}', emailContent.body);
   }
 
   private validateSummaryResponse(summary: any): SummaryResponse {
