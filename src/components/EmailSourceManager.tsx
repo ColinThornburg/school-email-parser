@@ -388,7 +388,7 @@ export default function EmailSourceManager({ userId, onSourcesUpdated }: EmailSo
         <CardContent>
           <div className="text-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-            <p className="mt-2 text-sm text-gray-600">Loading email sources...</p>
+            <p className="mt-2 text-sm text-gray-800 dark:text-gray-200">Loading email sources...</p>
           </div>
         </CardContent>
       </Card>
@@ -470,7 +470,7 @@ export default function EmailSourceManager({ userId, onSourcesUpdated }: EmailSo
           {/* Quick presets */}
           {sources.length === 0 && (
             <div className="text-center py-4">
-              <p className="text-sm text-gray-600 mb-2">
+              <p className="text-sm text-gray-800 dark:text-gray-200 mb-2">
                 No email sources configured yet.
               </p>
               <Button onClick={addSchoolEmailPresets} variant="outline" size="sm">
@@ -485,11 +485,11 @@ export default function EmailSourceManager({ userId, onSourcesUpdated }: EmailSo
               <div
                 key={source.id}
                 className={`flex items-center justify-between p-3 border rounded-lg transition-colors ${
-                  source.isActive 
+                  source.isActive
                     ? source.tag
-                      ? 'border-l-4 bg-green-50 border-green-200' 
-                      : 'bg-green-50 border-green-200'
-                    : 'bg-gray-50 border-gray-200'
+                      ? 'border-l-4 bg-green-100 border-green-300 dark:bg-green-900/20 dark:border-green-700'
+                      : 'bg-green-100 border-green-300 dark:bg-green-900/20 dark:border-green-700'
+                    : 'bg-gray-100 border-gray-300 dark:bg-gray-800 dark:border-gray-600'
                 }`}
                 style={source.tag && source.isActive ? { borderLeftColor: source.tag.color } : {}}
               >
@@ -525,9 +525,9 @@ export default function EmailSourceManager({ userId, onSourcesUpdated }: EmailSo
                   ) : (
                     <div className="flex items-center gap-3">
                       <div>
-                        <p className="font-medium">{source.email}</p>
+                        <p className="font-medium text-gray-900 dark:text-gray-100">{source.email}</p>
                         {source.domain && (
-                          <p className="text-xs text-gray-500">Domain: {source.domain}</p>
+                          <p className="text-xs text-gray-700 dark:text-gray-300">Domain: {source.domain}</p>
                         )}
                       </div>
                       {source.tag && (
@@ -596,7 +596,7 @@ export default function EmailSourceManager({ userId, onSourcesUpdated }: EmailSo
 
           {sources.length > 0 && (
             <div className="text-center pt-4 border-t">
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-gray-800 dark:text-gray-200">
                 {sources.filter(s => s.isActive).length} of {sources.length} sources active
               </p>
             </div>
