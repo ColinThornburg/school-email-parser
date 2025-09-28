@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 import { VercelRequest, VercelResponse } from '@vercel/node';
-const prompts = require('../config/prompts.json');
+import { prompts } from '../config/prompts.js';
 
 /**
  * Converts HTML content to clean plain text

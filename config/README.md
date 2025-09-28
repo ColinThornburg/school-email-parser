@@ -1,10 +1,10 @@
 # Centralized Prompt Configuration
 
 ## Overview
-The `prompts.json` file centralizes ALL LLM prompts used throughout the school email processing app. This allows you to easily modify AI behavior without touching any code.
+The `prompts.ts` file centralizes ALL LLM prompts used throughout the school email processing app. This allows you to easily modify AI behavior without touching any code.
 
 ## How to Use
-1. **Edit prompts**: Open `config/prompts.json` and modify any prompt text
+1. **Edit prompts**: Open `config/prompts.ts` and modify any prompt text in the `prompts` object
 2. **Deploy changes**: Push to your repo - changes take effect immediately on next deploy
 3. **Placeholders**: Keep text in `{{double braces}}` exactly as-is - these get replaced with actual data
 
@@ -27,12 +27,12 @@ The `prompts.json` file centralizes ALL LLM prompts used throughout the school e
 
 ## Important Notes
 - The "Meow" instruction in `summaryPrompt` is your test case - feel free to modify it
-- JSON format must be valid - test with an online JSON validator if unsure
+- TypeScript syntax must be valid - use `npx tsc --noEmit` to validate
 - Prompt changes affect all users immediately after deployment
 - Cost optimizations should focus on `classificationPrompt` since it runs most frequently
 
 ## Testing Changes
 After editing prompts:
-1. Test locally: `node -e "const p = require('./config/prompts.json'); console.log('✅ Valid JSON')"`
+1. Test locally: `npx tsc --noEmit` to check for syntax errors
 2. Deploy and test with actual emails
 3. Monitor processing costs in your dashboard
