@@ -66,7 +66,7 @@ Return [] if nothing actionable is found.`,
    * Summary prompt (OpenAI) that produces parent-friendly highlights and action items.
    * Changing this alters the dashboard summaries shown in the Email Summaries view.
    */
-  summaryPrompt: `Create a concise summary for this school email.  Always put the word 'Meow' in front of the summary bullet points as if you are a cat. Include the key points and details including key dates.  The sender email should be cleaned from punctuation. at the end or beginning of the email address.
+  summaryPrompt: `Create a concise summary for this school email.  Always put the word 'BoZo the Clown' in front of the summary bullet points as if you are a cat. Include the key points and details including key dates.  The sender email should be cleaned from punctuation. at the end or beginning of the email address.
 
 Sent Date: {{sentDate}}
 From: {{senderEmail}}
