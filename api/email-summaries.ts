@@ -275,27 +275,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     console.log(`Found ${cachedSummaries.length} emails, checking cache status...`);
-    
-    // Debug: Log the structure of the first email
-    if (cachedSummaries.length > 0) {
-      console.log('Sample email structure:', {
-        id: cachedSummaries[0].id,
-        subject: cachedSummaries[0].subject,
-        email_summaries_count: cachedSummaries[0].email_summaries?.length || 0,
-        email_summaries_sample: cachedSummaries[0].email_summaries?.[0] ? {
-          id: cachedSummaries[0].email_summaries[0].id,
-          hasData: !!cachedSummaries[0].email_summaries[0].summary_data
-        } : null
-      });
-    }
+
+    // Debug: Log cache status for all emails
+    const cacheStats = cachedSummaries.map(email => ({
+      id: email.id,
+      subject: email.subject.substring(0, 50) + '...',
+      hasSummary: email.email_summaries && email.email_summaries.length > 0,
+      summaryCount: email.email_summaries?.length || 0
+    }));
+    console.log('Cache status for all emails:', cacheStats);
 
     // Step 2: Identify emails that need summary generation
     const emailsNeedingSummary: EmailNeedingSummary[] = [];
     const existingSummaries: CachedSummary[] = [];
 
     for (const email of cachedSummaries) {
-      if (!email.email_summaries || email.email_summaries.length === 0 || forceRefresh) {
-        // No cached summary exists or force refresh requested
+      const hasCachedSummary = email.email_summaries && email.email_summaries.length > 0;
+
+      if (forceRefresh) {
+        console.log(`Force refresh requested for email ${email.id}: ${email.subject.substring(0, 50)}...`);
+        emailsNeedingSummary.push({
+          email_id: email.id,
+          subject: email.subject,
+          sender_email: email.sender_email,
+          sent_date: email.sent_date,
+          email_body_preview: email.email_body_preview,
+          content_hash: email.content_hash
+        });
+      } else if (!hasCachedSummary) {
+        console.log(`No cached summary found for email ${email.id}: ${email.subject.substring(0, 50)}...`);
         emailsNeedingSummary.push({
           email_id: email.id,
           subject: email.subject,
@@ -307,7 +315,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       } else {
         // Use cached summary
         const cachedSummary = email.email_summaries[0];
-        if (cachedSummary && cachedSummary.id) {
+        if (cachedSummary && cachedSummary.summary_data) {
+          console.log(`✅ Using cached summary for email ${email.id}: ${email.subject.substring(0, 50)}...`);
           existingSummaries.push({
             id: cachedSummary.id,
             emailId: email.id,
@@ -321,8 +330,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             emailBodyPreview: email.email_body_preview?.substring(0, 200) + '...'
           });
         } else {
-          console.warn(`Cached summary missing or invalid for email ${email.id}:`, cachedSummary);
-          // Treat as needing summary generation
+          console.warn(`❌ Cached summary invalid for email ${email.id}: missing summary_data`);
           emailsNeedingSummary.push({
             email_id: email.id,
             subject: email.subject,
@@ -335,21 +343,65 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    console.log(`Using ${existingSummaries.length} cached summaries, generating ${emailsNeedingSummary.length} new summaries`);
+    console.log(`📊 Summary cache status: ${existingSummaries.length} cached, ${emailsNeedingSummary.length} need generation`);
+
+    // Early return if all summaries are cached (most common case)
+    if (emailsNeedingSummary.length === 0) {
+      console.log(`🚀 All summaries are cached! Returning ${existingSummaries.length} cached summaries immediately`);
+      const allSummaries = existingSummaries.sort((a, b) => new Date(b.sentDate).getTime() - new Date(a.sentDate).getTime());
+
+      return res.status(200).json({
+        summaries: allSummaries,
+        metadata: {
+          totalReturned: allSummaries.length,
+          fromCache: existingSummaries.length,
+          newlyGenerated: 0,
+          estimatedCost: 0,
+          hasMore: allSummaries.length >= Number(limit),
+          allFromCache: true
+        }
+      });
+    }
 
     // Step 3: Generate summaries for emails that need them
     const newSummaries: CachedSummary[] = [];
-    
+
     if (emailsNeedingSummary.length > 0) {
+      console.log(`⚡ Processing ${emailsNeedingSummary.length} emails that need new summaries...`);
+
+      // Limit concurrent summary generation to prevent costs and rate limiting
+      const maxConcurrentGeneration = Math.min(emailsNeedingSummary.length, 3);
+      if (emailsNeedingSummary.length > maxConcurrentGeneration) {
+        console.log(`⚠️  Limited to ${maxConcurrentGeneration} new summaries per request to control costs`);
+        emailsNeedingSummary.splice(maxConcurrentGeneration); // Keep only the first N
+      }
+
       const summaryProvider = createSummaryProvider('openai');
 
       for (const emailData of emailsNeedingSummary) {
         try {
-          console.log(`Generating summary for email ${emailData.email_id}...`);
+          console.log(`🔄 Generating NEW summary for email ${emailData.email_id}: ${emailData.subject.substring(0, 50)}...`);
+
+          // For summary generation, try to get the full email body instead of just the preview
+          let fullEmailBody = emailData.email_body_preview || '';
+
+          // If we only have a preview, try to get the full body from processed_emails
+          if (fullEmailBody.length < 1000) { // Likely just a preview
+            console.log(`Fetching full email body for better summary quality...`);
+            const { data: fullEmail } = await supabase
+              .from('processed_emails')
+              .select('email_body_preview')
+              .eq('id', emailData.email_id)
+              .single();
+
+            if (fullEmail && fullEmail.email_body_preview) {
+              fullEmailBody = fullEmail.email_body_preview;
+            }
+          }
 
           const emailContent: EmailContent = {
             subject: emailData.subject,
-            body: extractEmailText(emailData.email_body_preview || ''),
+            body: extractEmailText(fullEmailBody),
             senderEmail: emailData.sender_email,
             sentDate: emailData.sent_date
           };
@@ -416,7 +468,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             // Continue processing even if logging fails
           }
 
-          console.log(`Successfully generated and stored summary for email ${emailData.email_id}`);
+          console.log(`✅ Successfully generated and stored summary for email ${emailData.email_id}`);
 
           newSummaries.push({
             id: storedSummary.id,
