@@ -97,7 +97,7 @@ export default function Dashboard() {
         .select(`
           email,
           tag_id,
-          tags!email_sources_tag_id_fkey(
+          tags(
             id,
             name,
             type,
