@@ -120,28 +120,35 @@ export default function Dashboard() {
         console.log('Processing event with sender:', senderEmail);
         console.log('Available email sources:', emailSources?.map(s => ({ email: s.email, hasTag: !!s.tags })));
         
-        const matchingSource = emailSources?.find(source => {
-          // Extract email from display name format: "Name <email@domain.com>"
-          const extractEmailFromDisplayName = (emailStr: string) => {
-            const match = emailStr.match(/<([^>]+)>/);
-            return match ? match[1] : emailStr;
-          };
-          
-          const cleanSenderEmail = extractEmailFromDisplayName(senderEmail);
+        // Extract email from display name format: "Name <email@domain.com>"
+        const extractEmailFromDisplayName = (emailStr: string) => {
+          const match = emailStr.match(/<([^>]+)>/);
+          return match ? match[1] : emailStr;
+        };
+
+        const cleanSenderEmail = extractEmailFromDisplayName(senderEmail);
+
+        // Find ALL matching sources, then prioritize exact matches
+        const allMatches = emailSources?.filter(source => {
           const exactMatch = source.email === cleanSenderEmail;
           const domainMatch = source.email.startsWith('@') && cleanSenderEmail.includes(source.email.substring(1));
-          const domainMatch2 = cleanSenderEmail.includes('@') && source.email.includes('@') && 
+          const domainMatch2 = cleanSenderEmail.includes('@') && source.email.includes('@') &&
                                cleanSenderEmail.split('@')[1] === source.email.split('@')[1];
-          
+
           console.log(`Checking ${source.email} vs ${senderEmail} (cleaned: ${cleanSenderEmail}):`, {
             exactMatch,
             domainMatch,
             domainMatch2,
             hasTag: !!source.tags
           });
-          
+
           return exactMatch || domainMatch || domainMatch2;
-        });
+        }) || [];
+
+        // Prioritize: 1) Exact matches, 2) Domain pattern matches (@domain), 3) Same domain matches
+        const matchingSource = allMatches.find(source => source.email === cleanSenderEmail) || // Exact match first
+                               allMatches.find(source => source.email.startsWith('@')) ||      // Domain pattern (@domain)
+                               allMatches[0];                                                   // Fallback to first match
         
         console.log('Matching source found:', matchingSource);
         const tag = matchingSource?.tags; // With explicit foreign key, this should be an object, not array
