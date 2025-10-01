@@ -369,7 +369,7 @@ class OpenAIService {
               }
             ],
             temperature: 0.1,
-            max_tokens: 800,
+            max_tokens: 1500,
             response_format: { type: "json_object" }
           })
         });
@@ -545,6 +545,8 @@ Include specific details in titles and descriptions.
 Convert relative dates to absolute dates based on sent date: ${emailContent.sentDate}
 Only include future dates.
 
+IMPORTANT: For multi-day events (e.g., "October 2-3"), create SEPARATE event objects for each date.
+
 Return JSON object with events array:
 {
   "events": [
@@ -559,6 +561,7 @@ Return JSON object with events array:
   ]
 }
 
+CRITICAL: Each event object must have exactly ONE "date" field. Never use duplicate keys.
 Return {"events": []} if no dates found.`;
   }
 
@@ -1812,6 +1815,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 processing_time: 0,
                 input_tokens: 0,
                 output_tokens: 0,
+                token_usage: 0,
                 cost: 0,
                 success_status: false,
                 retry_count: 0,
@@ -1866,12 +1870,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 email_id: null, // Batch processing doesn't map to individual emails
                 llm_provider: cost.provider,
                 model_name: cost.model,
-                processing_step: cost.provider === 'gemini' ? 
-                  (cost.model.includes('flash') ? 'classification' : 'fallback') : 
+                processing_step: cost.provider === 'gemini' ?
+                  (cost.model.includes('flash') ? 'classification' : 'fallback') :
                   'extraction',
                 processing_time: Math.round(totalLLMTime / llmResults.costTracking.length), // Distribute time
                 input_tokens: cost.inputTokens,
                 output_tokens: cost.outputTokens,
+                token_usage: cost.inputTokens + cost.outputTokens, // Add total token usage
                 cost: cost.cost,
                 success_status: true,
                 retry_count: 0
@@ -1910,6 +1915,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                   processing_time: Math.round(totalLLMTime / emailContentsToProcess.length),
                   input_tokens: 0, // Will be summed from LLM calls above
                   output_tokens: events.length, // Number of events extracted
+                  token_usage: events.length, // Total token usage
                   cost: 0, // Cost is tracked at LLM level
                   success_status: events.length >= 0, // Success if no errors
                   confidence_score: events.length > 0 ? events.reduce((sum, e) => sum + e.confidence, 0) / events.length : null,
@@ -2086,6 +2092,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               processing_time: 0,
               input_tokens: 0,
               output_tokens: 0,
+              token_usage: 0,
               cost: 0,
               success_status: false,
               retry_count: 0,

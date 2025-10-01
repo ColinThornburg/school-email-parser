@@ -449,7 +449,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 processing_time: 2000, // Estimated time for summary generation (2 seconds)
                 input_tokens: Math.ceil(estimatedTokens * 0.7), // Estimated 70% input
                 output_tokens: Math.ceil(estimatedTokens * 0.3), // Estimated 30% output
-                total_tokens: estimatedTokens,
+                token_usage: estimatedTokens, // Use token_usage instead of total_tokens (generated column)
                 cost: estimatedCost,
                 success_status: true,
                 confidence_score: summary.confidence,
