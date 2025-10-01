@@ -682,28 +682,39 @@ class LLMOrchestrator {
       console.log(`Processing email ${i + 1}/${emailContents.length}: "${emailContent.subject}"`);
 
       try {
-        // Step 1: Pre-filter with Gemini 2.0 Flash
-        console.log('Step 1: Pre-filtering with Gemini 2.0 Flash...');
-        const classification = await this.geminiService.classifyEmail(emailContent);
-        
-        // Track cost for classification
-        const classificationTokens = estimateTokenUsage(emailContent.subject + emailContent.body.substring(0, 500));
-        const classificationCost = calculateGeminiCost('gemini-1.5-flash', classificationTokens, 50);
-        costTracking.push({
-          provider: 'gemini',
-          model: 'gemini-1.5-flash',
-          inputTokens: classificationTokens,
-          outputTokens: 50,
-          cost: classificationCost
-        });
-        processingStats.totalCost += classificationCost;
+        // Step 1: Check if this is from a trusted school sender (skip classification for known sources)
+        // Since emails are pre-filtered by user's configured email sources, we can trust them
+        // This prevents classification from missing content that appears later in the email
+        const skipClassification = true; // Always skip for configured email sources
 
-        console.log(`Classification result: ${classification.hasDateContent} (confidence: ${classification.confidence})`);
+        let classification = { hasDateContent: true, confidence: 1.0, reasoning: 'Trusted school sender - skipped classification' };
 
-        if (!classification.hasDateContent) {
-          console.log('Email does not contain date content, skipping extraction');
-          results[emailKey] = [];
-          continue;
+        if (!skipClassification) {
+          // Step 1: Pre-filter with Gemini 2.0 Flash
+          console.log('Step 1: Pre-filtering with Gemini 2.0 Flash...');
+          classification = await this.geminiService.classifyEmail(emailContent);
+
+          // Track cost for classification
+          const classificationTokens = estimateTokenUsage(emailContent.subject + emailContent.body.substring(0, 2000));
+          const classificationCost = calculateGeminiCost('gemini-1.5-flash', classificationTokens, 50);
+          costTracking.push({
+            provider: 'gemini',
+            model: 'gemini-1.5-flash',
+            inputTokens: classificationTokens,
+            outputTokens: 50,
+            cost: classificationCost
+          });
+          processingStats.totalCost += classificationCost;
+
+          console.log(`Classification result: ${classification.hasDateContent} (confidence: ${classification.confidence})`);
+
+          if (!classification.hasDateContent) {
+            console.log('Email does not contain date content, skipping extraction');
+            results[emailKey] = [];
+            continue;
+          }
+        } else {
+          console.log('Step 1: Skipping classification for trusted school sender (pre-filtered by user configuration)');
         }
 
         processingStats.prefilterPassed++;
@@ -1314,7 +1325,7 @@ class GeminiService {
     return prompts.classificationPrompt
       .replace('{{subject}}', emailContent.subject)
       .replace('{{senderEmail}}', emailContent.senderEmail)
-      .replace('{{bodyPreview}}', emailContent.body.substring(0, 500));
+      .replace('{{bodyPreview}}', emailContent.body.substring(0, 2000));
   }
 
   private createExtractionPrompt(emailContent: EmailContent): string {

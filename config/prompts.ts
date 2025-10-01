@@ -15,6 +15,7 @@ export const prompts = {
   /**
    * Quick triage prompt (Gemini) that decides if an email has date/time info.
    * Used before the expensive extraction pass and controls whether we skip an email.
+   * NOTE: This is typically skipped for trusted school senders that are pre-configured.
    */
   classificationPrompt: `Analyze this school email to decide if it contains actionable date or time information that parents should see.
 
@@ -29,7 +30,16 @@ Return ONLY JSON:
   "reasoning": "short explanation"
 }
 
-Look for assignments, tests, meetings, sports, trips, deadlines, or reminders. Return true if ANY future-facing date/time is mentioned.`,
+Look carefully for:
+- Calendar sections or event listings (often titled "MARK YOUR CALENDAR", "UPCOMING EVENTS", "SAVE THE DATE")
+- Cafeteria/lunch menus with days of the week
+- Assignment due dates, test dates, project deadlines
+- School events: meetings, sports, performances, field trips
+- Conference schedules, parent sessions
+- School breaks, early dismissals, holidays
+- Any dates mentioned with month names or day-of-week patterns
+
+Return true if ANY of these date patterns are found, even if they appear later in the email.`,
 
   /**
    * Main extraction prompt (OpenAI) that pulls structured events from an email.
