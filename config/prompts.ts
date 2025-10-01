@@ -57,7 +57,7 @@ Instructions:
 - Convert relative references ("next Thursday") into absolute YYYY-MM-DD using the sent date.
 - Only include events after the sent date.
 - Use rich, specific titles and descriptions.
-- Always search in emails as well for the lunch schedule and place them in the correct date.  If you see a section called Cafeteria and it has days such as Monday: Chicken Nuggets, make sure to capture that.
+- IMPORTANT: Always extract lunch/cafeteria menus. When you see a section like "CAFETERIA" or "WHAT'S FOR LUNCH" with day-of-week entries (Monday: Chicken, Tuesday: Pizza, etc.), convert each day to the actual date of that weekday in the upcoming week. For example, if the email was sent on Saturday Sept 28, then "Monday: Chicken" becomes "2025-09-30" (the following Monday). Create one event per day with title "Lunch: [menu item]".
 
 Respond with JSON array:
 [

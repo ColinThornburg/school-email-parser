@@ -547,6 +547,12 @@ Only include future dates.
 
 IMPORTANT: For multi-day events (e.g., "October 2-3"), create SEPARATE event objects for each date.
 
+LUNCH MENUS: When you see sections titled "CAFETERIA", "WHAT'S FOR LUNCH", or similar with day-of-week patterns:
+- Monday: Fried Chicken → Create event with title "Lunch: Fried Chicken" for the date of the next Monday after ${emailContent.sentDate}
+- Tuesday: Pizza → Create event with title "Lunch: Pizza" for the date of the next Tuesday after ${emailContent.sentDate}
+- Continue this pattern for all weekdays listed
+- Skip generic notes like "soup available daily" - only extract specific menu items for specific days
+
 Return JSON object with events array:
 {
   "events": [
