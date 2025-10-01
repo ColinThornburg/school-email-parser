@@ -369,7 +369,7 @@ class OpenAIService {
               }
             ],
             temperature: 0.1,
-            max_tokens: 1500,
+            max_tokens: 2500,
             response_format: { type: "json_object" }
           })
         });
@@ -399,7 +399,7 @@ class OpenAIService {
         } catch (parseError) {
           console.error('OpenAI JSON parsing failed. Raw content:', content.substring(0, 1000));
           console.error('Parse error:', parseError);
-          
+
           // Try basic cleanup similar to Gemini approach
           try {
             const cleanedContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
@@ -408,6 +408,71 @@ class OpenAIService {
             console.log('OpenAI JSON parsing succeeded after cleanup, events with reasoning:', events.map(e => ({ title: e.title, reasoning: e.reasoning || 'MISSING' })));
             return this.validateAndNormalizeResponse(events, emailContent.sentDate);
           } catch (retryError) {
+            console.log('Attempting to salvage partial JSON response...');
+
+            // Try to salvage partial responses by extracting complete event objects
+            try {
+              // Find the events array and extract all complete event objects
+              const eventsMatch = content.match(/"events"\s*:\s*\[(.*)\]/s);
+              if (eventsMatch) {
+                // Extract individual complete event objects
+                const eventsContent = eventsMatch[1];
+                const completeEvents = [];
+                let depth = 0;
+                let currentEvent = '';
+                let inString = false;
+                let escapeNext = false;
+
+                for (let i = 0; i < eventsContent.length; i++) {
+                  const char = eventsContent[i];
+
+                  if (escapeNext) {
+                    currentEvent += char;
+                    escapeNext = false;
+                    continue;
+                  }
+
+                  if (char === '\\') {
+                    escapeNext = true;
+                    currentEvent += char;
+                    continue;
+                  }
+
+                  if (char === '"') {
+                    inString = !inString;
+                  }
+
+                  if (!inString) {
+                    if (char === '{') depth++;
+                    if (char === '}') depth--;
+                  }
+
+                  currentEvent += char;
+
+                  // If we've closed an event object, try to parse it
+                  if (depth === 0 && currentEvent.trim().endsWith('}')) {
+                    const trimmed = currentEvent.trim().replace(/,$/, '');
+                    try {
+                      const parsed = JSON.parse(trimmed);
+                      if (parsed.title && parsed.date) {
+                        completeEvents.push(parsed);
+                      }
+                    } catch (e) {
+                      // Skip malformed event
+                    }
+                    currentEvent = '';
+                  }
+                }
+
+                if (completeEvents.length > 0) {
+                  console.log(`Salvaged ${completeEvents.length} complete events from truncated response`);
+                  return this.validateAndNormalizeResponse(completeEvents, emailContent.sentDate);
+                }
+              }
+            } catch (salvageError) {
+              console.error('Failed to salvage partial JSON:', salvageError);
+            }
+
             throw new Error(`Invalid JSON response from OpenAI: ${parseError instanceof Error ? parseError.message : 'Unknown parsing error'}`);
           }
         }
