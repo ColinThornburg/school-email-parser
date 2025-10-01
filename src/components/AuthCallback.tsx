@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { createGmailService } from '../lib/gmail';
 import { supabase } from '../lib/supabase';
 
 export default function AuthCallback() {
@@ -11,67 +10,122 @@ export default function AuthCallback() {
   useEffect(() => {
     const handleAuthCallback = async () => {
       try {
-        // Get authorization code from URL
-        const urlParams = new URLSearchParams(window.location.search);
-        const code = urlParams.get('code');
-        const error = urlParams.get('error');
+        setMessage('Completing authentication...');
+
+        console.log('AuthCallback - Initial URL state:', {
+          fullUrl: window.location.href,
+          hash: window.location.hash,
+          search: window.location.search,
+          pathname: window.location.pathname
+        });
+
+        // Check if we have hash params (Supabase OAuth callback uses hash fragments)
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
+        const hasHashParams = hashParams.has('access_token') || hashParams.has('error');
+
+        console.log('Hash params check:', {
+          hasHashParams,
+          hasAccessToken: hashParams.has('access_token'),
+          hasError: hashParams.has('error'),
+          errorDescription: hashParams.get('error_description')
+        });
+
+        // If there's an error in the hash, throw it
+        if (hashParams.has('error')) {
+          const error = hashParams.get('error');
+          const errorDescription = hashParams.get('error_description');
+          throw new Error(`OAuth error: ${error} - ${errorDescription}`);
+        }
+
+        // Supabase should automatically pick up the hash params and create a session
+        // Let's wait a bit for it to process
+        setMessage('Establishing session...');
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
+        console.log('Attempting to get session...');
+        const { data: { session }, error } = await supabase.auth.getSession();
+
+        console.log('Session result:', {
+          hasSession: !!session,
+          hasError: !!error,
+          error: error,
+          sessionKeys: session ? Object.keys(session) : []
+        });
 
         if (error) {
-          throw new Error(`Authorization failed: ${error}`);
+          console.error('Session error:', error);
+          throw error;
         }
 
-        if (!code) {
-          throw new Error('No authorization code received');
+        if (!session) {
+          // Try one more time with exchangeCodeForSession if we have a code
+          const code = hashParams.get('code');
+          if (code) {
+            console.log('Attempting to exchange code for session...');
+            const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+            if (exchangeError) {
+              console.error('Code exchange error:', exchangeError);
+              throw exchangeError;
+            }
+            if (data.session) {
+              console.log('Session obtained via code exchange');
+              // Continue with this session
+            }
+          } else {
+            console.error('No session and no code to exchange');
+            throw new Error('No session established after OAuth callback');
+          }
         }
 
-        setMessage('Exchanging code for tokens...');
+        const finalSession = await supabase.auth.getSession();
+        if (!finalSession.data.session) {
+          throw new Error('Still no session after all attempts');
+        }
 
-        // Exchange code for tokens
-        const gmailService = createGmailService();
-        console.log('Environment variables check:', {
-          hasClientId: !!import.meta.env.VITE_GMAIL_CLIENT_ID,
-          hasClientSecret: !!import.meta.env.VITE_GMAIL_CLIENT_SECRET,
-          clientId: import.meta.env.VITE_GMAIL_CLIENT_ID?.slice(0, 10) + '...',
-          clientSecret: import.meta.env.VITE_GMAIL_CLIENT_SECRET ? 'PRESENT' : 'MISSING'
+        console.log('Final session established:', {
+          userId: finalSession.data.session.user.id,
+          hasProviderToken: !!finalSession.data.session.provider_token,
+          hasProviderRefreshToken: !!finalSession.data.session.provider_refresh_token
         });
-        const tokens = await gmailService.exchangeCodeForTokens(code);
 
-        setMessage('Getting user information...');
+        setMessage('Getting Gmail access token...');
 
-        // Get user email
-        const userEmail = await gmailService.getUserEmail(tokens.accessToken);
+        // Get the provider token (Gmail access token) from Supabase
+        const providerToken = finalSession.data.session.provider_token;
+        const providerRefreshToken = finalSession.data.session.provider_refresh_token;
 
-        setMessage('Saving authentication data...');
+        if (!providerToken) {
+          throw new Error('No Gmail access token received');
+        }
 
-        // Save tokens to Supabase using UPSERT to handle race conditions
-        const userId = crypto.randomUUID();
-        const { data: upsertedUser, error: upsertError } = await supabase
+        setMessage('Saving Gmail credentials...');
+
+        // Get the user record from our users table (created by trigger)
+        const { data: userData, error: userError } = await supabase
           .from('users')
-          .upsert({
-            email: userEmail,
-            gmail_token: tokens.accessToken,
-            gmail_refresh_token: tokens.refreshToken,
-            last_sync_at: new Date().toISOString()
-          }, {
-            onConflict: 'email',
-            ignoreDuplicates: false
-          })
           .select('id')
+          .eq('auth_user_id', finalSession.data.session.user.id)
           .single();
 
-        if (upsertError) {
-          throw new Error(`Database error: ${upsertError.message}`);
+        if (userError) {
+          console.error('Error fetching user:', userError);
+          throw new Error('Failed to get user record');
         }
 
-        const finalUserId = upsertedUser?.id || userId;
+        // Update user record with Gmail tokens
+        const { error: updateError } = await supabase
+          .from('users')
+          .update({
+            gmail_token: providerToken,
+            gmail_refresh_token: providerRefreshToken,
+            last_sync_at: new Date().toISOString()
+          })
+          .eq('id', userData.id);
 
-        // Store user info in localStorage for now
-        localStorage.setItem('user', JSON.stringify({
-          id: finalUserId,
-          email: userEmail,
-          accessToken: tokens.accessToken,
-          refreshToken: tokens.refreshToken
-        }));
+        if (updateError) {
+          console.error('Error updating tokens:', updateError);
+          throw new Error('Failed to save Gmail credentials');
+        }
 
         setStatus('success');
         setMessage('Authentication successful! Redirecting...');
@@ -79,7 +133,7 @@ export default function AuthCallback() {
         // Redirect to dashboard after a short delay
         setTimeout(() => {
           navigate('/');
-        }, 2000);
+        }, 1500);
 
       } catch (error) {
         console.error('Auth callback error:', error);
@@ -98,7 +152,7 @@ export default function AuthCallback() {
           {status === 'processing' && (
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           )}
-          
+
           {status === 'success' && (
             <div className="text-green-600 mb-4">
               <svg className="h-12 w-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -106,7 +160,7 @@ export default function AuthCallback() {
               </svg>
             </div>
           )}
-          
+
           {status === 'error' && (
             <div className="text-red-600 mb-4">
               <svg className="h-12 w-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -114,15 +168,15 @@ export default function AuthCallback() {
               </svg>
             </div>
           )}
-          
+
           <h2 className="text-xl font-semibold mb-2">
             {status === 'processing' && 'Authenticating...'}
             {status === 'success' && 'Success!'}
             {status === 'error' && 'Error'}
           </h2>
-          
+
           <p className="text-gray-600 mb-4">{message}</p>
-          
+
           {status === 'error' && (
             <button
               onClick={() => navigate('/')}
@@ -135,4 +189,4 @@ export default function AuthCallback() {
       </div>
     </div>
   );
-} 
+}

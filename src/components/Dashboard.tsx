@@ -1,25 +1,27 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
 import Calendar from './ui/calendar'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
-import { Calendar as CalendarIcon, Settings, Mail, Clock, CheckCircle, LogIn, RefreshCw, X, BarChart3, Trash2, FileText, User, Globe, List, MoreVertical, Download, RotateCcw, Key, Activity, Calendar as CalendarIcon2, CheckCircle2, AlertCircle, CalendarCheck, Loader2 } from 'lucide-react'
+import { Calendar as CalendarIcon, Settings, Mail, Clock, CheckCircle, RefreshCw, X, BarChart3, Trash2, FileText, User, Globe, List, MoreVertical, Download, RotateCcw, Activity, Calendar as CalendarIcon2, CheckCircle2, AlertCircle, CalendarCheck, Loader2, LogOut } from 'lucide-react'
 import { FcGoogle } from 'react-icons/fc'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ExtractedDate } from '../types'
 import { formatDate } from '../lib/utils'
-import { createGmailService } from '../lib/gmail'
 import { supabase } from '../lib/supabase'
 import EmailSourceManager from './EmailSourceManager'
 import ProcessingDashboard from './ProcessingDashboard'
 import EmailSummaries from './EmailSummaries'
 import { useGlassToast } from './ui/glass-toast'
+import { useAuth } from '../contexts/AuthContext'
 
 export default function Dashboard() {
+  const navigate = useNavigate()
+  const { user: authUser, loading: authLoading, signOut } = useAuth()
   const [events, setEvents] = useState<ExtractedDate[]>([])
   const [view, setView] = useState<'calendar' | 'list' | 'processing' | 'summaries'>('calendar')
-  const [user, setUser] = useState<any>(null)
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [dbUser, setDbUser] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSyncing, setIsSyncing] = useState(false)
   const [processingPhase, setProcessingPhase] = useState<string>('')
@@ -53,18 +55,40 @@ export default function Dashboard() {
   }
 
   useEffect(() => {
-    // Check if user is authenticated
-    const storedUser = localStorage.getItem('user')
-    if (storedUser) {
-      const userData = JSON.parse(storedUser)
-      console.log('Dashboard loaded user:', userData)
-      setUser(userData)
-      setIsAuthenticated(true)
-      fetchEvents(userData.id)
-    } else {
+    // Redirect to login if not authenticated
+    if (!authLoading && !authUser) {
+      navigate('/')
+      return
+    }
+
+    // Fetch database user record once auth user is available
+    if (authUser && !dbUser) {
+      fetchDbUser(authUser.id)
+    }
+  }, [authUser, authLoading, navigate, dbUser])
+
+  const fetchDbUser = async (authUserId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('auth_user_id', authUserId)
+        .single()
+
+      if (error) throw error
+
+      setDbUser(data)
+      fetchEvents(data.id)
+    } catch (error) {
+      console.error('Error fetching user:', error)
+      notify({
+        title: 'Error',
+        description: 'Failed to load user data',
+        variant: 'error'
+      })
       setIsLoading(false)
     }
-  }, [])
+  }
 
   const fetchEvents = async (userId: string) => {
     try {
@@ -252,7 +276,7 @@ export default function Dashboard() {
   }
 
   const handleSyncToCalendar = async (event: ExtractedDate) => {
-    if (!user) {
+    if (!dbUser) {
       notify({
         title: 'Reconnect required',
         description: 'Please re-authenticate Gmail before syncing to Google Calendar.',
@@ -280,9 +304,9 @@ export default function Dashboard() {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          userId: user.id,
-          accessToken: user.accessToken,
-          refreshToken: user.refreshToken,
+          userId: dbUser.id,
+          accessToken: dbUser.gmail_token,
+          refreshToken: dbUser.gmail_refresh_token,
           timeZone,
           event: {
             id: event.id,
@@ -343,26 +367,22 @@ export default function Dashboard() {
     }
   }
 
-  const handleGmailAuth = () => {
-    const gmailService = createGmailService()
-    const authUrl = gmailService.getAuthUrl()
-    window.location.href = authUrl
-  }
-
-  const handleReAuth = () => {
-    // Clear stored user data to force fresh authentication
-    localStorage.removeItem('user')
-    setUser(null)
-    setIsAuthenticated(false)
-    
-    // Initiate fresh OAuth flow
-    const gmailService = createGmailService()
-    const authUrl = gmailService.getAuthUrl()
-    window.location.href = authUrl
+  const handleSignOut = async () => {
+    try {
+      await signOut()
+      navigate('/')
+    } catch (error) {
+      console.error('Error signing out:', error)
+      notify({
+        title: 'Error',
+        description: 'Failed to sign out',
+        variant: 'error'
+      })
+    }
   }
 
   const handleSyncEmails = async () => {
-    if (!user) return
+    if (!dbUser) return
 
     setIsSyncing(true)
     setProcessingPhase('🔍 Connecting to Gmail and preparing to sync...')
@@ -377,9 +397,9 @@ export default function Dashboard() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          userId: user.id,
-          accessToken: user.accessToken,
-          refreshToken: user.refreshToken,
+          userId: dbUser.id,
+          accessToken: dbUser.gmail_token,
+          refreshToken: dbUser.gmail_refresh_token,
           forceReprocess: false,
           lookbackDays: lookbackDays
         }),
@@ -413,7 +433,7 @@ export default function Dashboard() {
       setProcessingPhase('🔄 Refreshing your calendar...')
 
       // Refresh events after sync
-      await fetchEvents(user.id)
+      await fetchEvents(dbUser.id)
 
       setProcessingPhase('✅ Sync completed successfully!')
 
@@ -472,7 +492,7 @@ export default function Dashboard() {
   }
 
   const handleReprocessEmails = async () => {
-    if (!user) return
+    if (!dbUser) return
 
     const confirmed = confirm(
       'This will reprocess all emails and clean up duplicate events. This may take a while. Continue?'
@@ -492,9 +512,9 @@ export default function Dashboard() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          userId: user.id,
-          accessToken: user.accessToken,
-          refreshToken: user.refreshToken,
+          userId: dbUser.id,
+          accessToken: dbUser.gmail_token,
+          refreshToken: dbUser.gmail_refresh_token,
           forceReprocess: true,
           lookbackDays: lookbackDays
         }),
@@ -535,7 +555,7 @@ export default function Dashboard() {
       setProcessingPhase('🔄 Refreshing your calendar...')
 
       // Refresh events after reprocessing
-      await fetchEvents(user.id)
+      await fetchEvents(dbUser.id)
 
       setProcessingPhase('✅ Reprocessing completed successfully!')
 
@@ -587,41 +607,13 @@ export default function Dashboard() {
     }
   }
 
-  const handleLogout = () => {
-    localStorage.removeItem('user')
-    setUser(null)
-    setIsAuthenticated(false)
-    setEvents([])
-  }
-
   // Show loading state
-  if (isLoading) {
+  if (authLoading || isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-slate-300">Loading...</p>
-        </div>
-      </div>
-    )
-  }
-
-  // Show authentication screen if not authenticated
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="max-w-md w-full rounded-2xl border border-white/12 bg-white/10 p-8 text-slate-100 shadow-[0_35px_75px_-35px_rgba(0,0,0,0.85)] backdrop-blur-2xl">
-          <div className="text-center">
-            <Mail className="h-16 w-16 mx-auto mb-4 text-primary" />
-            <h1 className="text-2xl font-bold mb-2 text-slate-100">School Email Parser</h1>
-            <p className="text-slate-300 mb-6">
-              Connect your Gmail account to automatically extract important dates from school emails
-            </p>
-            <Button onClick={handleGmailAuth} className="w-full">
-              <LogIn className="h-4 w-4 mr-2" />
-              Connect Gmail Account
-            </Button>
-          </div>
         </div>
       </div>
     )
@@ -634,9 +626,9 @@ export default function Dashboard() {
         <div className="max-w-7xl mx-auto flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="w-full sm:w-auto">
             <h1 className="text-2xl font-semibold text-slate-100">School Calendar</h1>
-            {user && (
+            {authUser && (
               <p className="text-sm text-slate-300 mt-1 truncate">
-                {user.email}
+                {authUser.email}
               </p>
             )}
           </div>
@@ -777,11 +769,11 @@ export default function Dashboard() {
                   
                   <DropdownMenu.Item
                     className="flex items-center px-3 py-2 text-sm text-slate-100 hover:bg-white/15 rounded-md cursor-pointer"
-                    onClick={handleReAuth}
+                    onClick={handleSignOut}
                     disabled={isSyncing}
                   >
-                    <Key className="h-4 w-4 mr-3 text-emerald-200" />
-                    Re-authenticate Gmail
+                    <LogOut className="h-4 w-4 mr-3 text-slate-200" />
+                    Sign Out
                   </DropdownMenu.Item>
                   
                   <DropdownMenu.Separator className="h-px bg-white/10 my-1" />
@@ -869,15 +861,6 @@ export default function Dashboard() {
                 <BarChart3 className="h-4 w-4" />
               </Button>
             </div>
-            
-            <Button
-              onClick={handleLogout}
-              variant="outline"
-              size="sm"
-              className="w-full sm:w-auto"
-            >
-              Logout
-            </Button>
           </div>
         </div>
       </div>
@@ -939,10 +922,10 @@ export default function Dashboard() {
         {showSettings && (
           <div className="mb-6">
             <EmailSourceManager 
-              userId={user.id} 
+              userId={dbUser.id} 
               onSourcesUpdated={() => {
                 // Optionally refresh events after sources are updated
-                fetchEvents(user.id)
+                fetchEvents(dbUser.id)
               }}
             />
           </div>
@@ -1176,9 +1159,9 @@ export default function Dashboard() {
                   })()}
                 </div>
               ) : view === 'summaries' ? (
-                <EmailSummaries user={user} />
+                <EmailSummaries user={dbUser} />
               ) : (
-                <ProcessingDashboard user={user} />
+                <ProcessingDashboard user={dbUser} />
               )}
           </CardContent>
         </Card>
