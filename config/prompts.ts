@@ -57,7 +57,7 @@ Instructions:
 - Convert relative references ("next Thursday") into absolute YYYY-MM-DD using the sent date.
 - Only include events after the sent date.
 - Use rich, specific titles and descriptions.
-- IMPORTANT: Always extract lunch/cafeteria menus. When you see a section like "CAFETERIA" or "WHAT'S FOR LUNCH" with day-of-week entries (Monday: Chicken, Tuesday: Pizza, etc.), convert each day to the actual date of that weekday in the upcoming week. For example, if the email was sent on Saturday Sept 28, then "Monday: Chicken" becomes "2025-09-30" (the following Monday). Create one event per day with title "Lunch: [menu item]".
+- IMPORTANT: Always extract lunch/cafeteria menus. When you see a section like "CAFETERIA" or "WHAT'S FOR LUNCH" with day-of-week entries (Monday: Chicken, Tuesday: Pizza, etc.), calculate the date for each weekday by finding the NEXT occurrence of that weekday starting from the sent date. Example: Email sent Sunday, Sept 28, 2025 with "Monday: Chicken" means Monday, Sept 29, 2025 (the very next day, NOT Oct 6). Key rule: Find the soonest occurrence of each weekday that is on or after the sent date. Create one event per day with title "Lunch: [menu item]".
 
 Respond with JSON array:
 [

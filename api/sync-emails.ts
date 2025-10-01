@@ -416,6 +416,46 @@ class OpenAIService {
   }
 
   async extractDates(emailContent: EmailContent): Promise<LLMResponse[]> {
+    // Check if email needs chunking
+    const chunks = chunkEmailContent(emailContent);
+
+    // If no chunking needed (single chunk), use regular processing
+    if (chunks.length === 1) {
+      return await this.extractDatesFromSingleEmail(emailContent);
+    }
+
+    // Process multiple chunks and merge results
+    console.log(`Processing email in ${chunks.length} chunks...`);
+    const allEvents: LLMResponse[] = [];
+
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      console.log(`Processing chunk ${i + 1}/${chunks.length}: ${chunk.section}`);
+
+      try {
+        const chunkEvents = await this.extractDatesFromSingleEmail(chunk.content);
+        console.log(`Chunk ${i + 1} extracted ${chunkEvents.length} events`);
+        allEvents.push(...chunkEvents);
+
+        // Small delay between chunks to avoid rate limiting
+        if (i < chunks.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      } catch (error) {
+        console.error(`Error processing chunk ${i + 1}:`, error);
+        // Continue with other chunks even if one fails
+      }
+    }
+
+    // Deduplicate events across chunks (same title + date + time)
+    const uniqueEvents = this.deduplicateEvents(allEvents);
+    console.log(`After deduplication: ${uniqueEvents.length} unique events from ${allEvents.length} total`);
+
+    return uniqueEvents;
+  }
+
+  // New method: Extract dates from a single email (no chunking)
+  private async extractDatesFromSingleEmail(emailContent: EmailContent): Promise<LLMResponse[]> {
     const prompt = this.createOptimizedPrompt(emailContent);
 
     try {
@@ -633,6 +673,29 @@ class OpenAIService {
     }
   }
 
+  // Deduplicate events that may appear in multiple chunks
+  private deduplicateEvents(events: LLMResponse[]): LLMResponse[] {
+    const seen = new Map<string, LLMResponse>();
+
+    for (const event of events) {
+      // Create unique key from title + date + time
+      const normalizedTime = event.time || 'no-time';
+      const key = `${event.title.toLowerCase().trim()}:${event.date}:${normalizedTime}`;
+
+      if (!seen.has(key)) {
+        seen.set(key, event);
+      } else {
+        // If duplicate, keep the one with higher confidence
+        const existing = seen.get(key)!;
+        if (event.confidence > existing.confidence) {
+          seen.set(key, event);
+        }
+      }
+    }
+
+    return Array.from(seen.values()).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  }
+
   // Parallel processing as fallback for batch API
   private async parallelExtractDates(emailContents: EmailContent[]): Promise<{ [key: string]: LLMResponse[] }> {
     const results: { [key: string]: LLMResponse[] } = {};
@@ -683,10 +746,30 @@ Only include future dates.
 IMPORTANT: For multi-day events (e.g., "October 2-3"), create SEPARATE event objects for each date.
 
 LUNCH MENUS: When you see sections titled "CAFETERIA", "WHAT'S FOR LUNCH", or similar with day-of-week patterns:
-- Monday: Fried Chicken → Create event with title "Lunch: Fried Chicken" for the date of the next Monday after ${emailContent.sentDate}
-- Tuesday: Pizza → Create event with title "Lunch: Pizza" for the date of the next Tuesday after ${emailContent.sentDate}
-- Continue this pattern for all weekdays listed
-- Skip generic notes like "soup available daily" - only extract specific menu items for specific days
+CRITICAL: Calculate dates from the email sent date: ${emailContent.sentDate}
+
+For each weekday mentioned (Monday, Tuesday, Wednesday, Thursday, Friday):
+- Find the NEXT occurrence of that weekday starting from (and including) the sent date
+- If the sent date IS that weekday and is still future/current, use that date
+- Otherwise use the next occurrence
+
+EXAMPLES:
+1. Email sent: Sunday, September 28, 2025
+   - "Monday: Fried Chicken" → Monday, September 29, 2025 (the very next day!)
+   - "Tuesday: Pizza" → Tuesday, September 30, 2025
+   - "Friday: Subs" → Friday, October 3, 2025
+
+2. Email sent: Wednesday, September 24, 2025
+   - "Monday: Fried Chicken" → Monday, September 29, 2025 (next Monday, since Sept 22 has passed)
+   - "Thursday: Chicken" → Thursday, September 25, 2025 (next day)
+   - "Friday: Subs" → Friday, September 26, 2025
+
+3. Email sent: Saturday, September 27, 2025
+   - "Monday: Fried Chicken" → Monday, September 29, 2025 (the upcoming Monday)
+
+The key: Calculate from sent date. Find the SOONEST occurrence of each weekday that is on or after the sent date.
+
+Skip generic notes like "soup available daily" - only extract specific menu items for specific days
 
 Return JSON object with events array:
 {
@@ -1219,6 +1302,231 @@ function estimateTokenUsage(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
+/**
+ * Intelligently splits email body into logical sections for processing
+ * Detects common school email patterns and splits on section boundaries
+ */
+function detectEmailSections(body: string, subject: string): Array<{ title: string; content: string }> {
+  if (!body) return [];
+
+  // Common section headers in school emails (case-insensitive)
+  const sectionPatterns = [
+    // Calendar/Events sections
+    /(?:^|\n)([A-Z\s]{2,}(?:CALENDAR|EVENTS?|UPCOMING|SAVE THE DATE|MARK YOUR CALENDAR|THIS WEEK|NEXT WEEK)[A-Z\s]*?)(?:\n|:)/gi,
+
+    // Cafeteria/Lunch sections
+    /(?:^|\n)([A-Z\s]{2,}(?:CAFETERIA|LUNCH|MENU|BREAKFAST|WHAT'S FOR)[A-Z\s]*?)(?:\n|:)/gi,
+
+    // Academic/Assignment sections
+    /(?:^|\n)([A-Z\s]{2,}(?:HOMEWORK|ASSIGNMENT|DUE|REMINDER|IMPORTANT|ANNOUNCEMENT)[A-Z\s]*?)(?:\n|:)/gi,
+
+    // Athletics/Activities sections
+    /(?:^|\n)([A-Z\s]{2,}(?:SPORTS?|ATHLETICS?|PRACTICE|GAME|ACTIVITIES?|CLUBS?)[A-Z\s]*?)(?:\n|:)/gi,
+
+    // Administrative sections
+    /(?:^|\n)([A-Z\s]{2,}(?:PARENT|CONFERENCE|MEETING|PTO|PTA|VOLUNTEER)[A-Z\s]*?)(?:\n|:)/gi,
+
+    // General dividers
+    /(?:^|\n)(---+|===+|\*\*\*+)(?:\n|$)/gi
+  ];
+
+  // Find all section headers with their positions
+  const headers: Array<{ title: string; position: number }> = [];
+
+  for (const pattern of sectionPatterns) {
+    let match;
+    // Reset pattern's lastIndex
+    pattern.lastIndex = 0;
+    while ((match = pattern.exec(body)) !== null) {
+      const title = match[1].trim();
+      if (title.length >= 3 && title.length <= 50) { // Reasonable header length
+        headers.push({ title, position: match.index });
+      }
+    }
+  }
+
+  // Sort headers by position
+  headers.sort((a, b) => a.position - b.position);
+
+  // Remove duplicate headers that are very close together (within 10 chars)
+  const uniqueHeaders = headers.filter((header, index) => {
+    if (index === 0) return true;
+    return header.position - headers[index - 1].position > 10;
+  });
+
+  // If we found section headers, split on them
+  if (uniqueHeaders.length > 0) {
+    const sections: Array<{ title: string; content: string }> = [];
+
+    for (let i = 0; i < uniqueHeaders.length; i++) {
+      const startPos = uniqueHeaders[i].position;
+      const endPos = i < uniqueHeaders.length - 1 ? uniqueHeaders[i + 1].position : body.length;
+
+      const content = body.substring(startPos, endPos).trim();
+
+      // Only include sections with meaningful content (more than just the header)
+      if (content.length > uniqueHeaders[i].title.length + 20) {
+        sections.push({
+          title: uniqueHeaders[i].title,
+          content: content
+        });
+      }
+    }
+
+    // If we have sections, return them
+    if (sections.length > 0) {
+      return sections;
+    }
+  }
+
+  // Fallback: No clear sections found, return whole email as one section
+  return [{ title: subject || 'Email Content', content: body }];
+}
+
+/**
+ * Chunks email content intelligently based on token limits
+ * Tries to keep logical sections together, splits only when necessary
+ */
+function chunkEmailContent(
+  emailContent: EmailContent,
+  maxTokensPerChunk: number = 6000 // Conservative limit for input (leaves room for output)
+): Array<{ section: string; content: EmailContent }> {
+  const { subject, body, senderEmail, sentDate } = emailContent;
+
+  // Estimate tokens for the whole email
+  const basePromptTokens = estimateTokenUsage(subject + senderEmail + sentDate);
+  const bodyTokens = estimateTokenUsage(body);
+  const totalTokens = basePromptTokens + bodyTokens;
+
+  // If email fits comfortably in token limit, no chunking needed
+  if (totalTokens < maxTokensPerChunk) {
+    console.log(`Email fits in token limit (${totalTokens} tokens), no chunking needed`);
+    return [{
+      section: 'Full Email',
+      content: emailContent
+    }];
+  }
+
+  console.log(`Email exceeds token limit (${totalTokens} tokens), attempting intelligent chunking...`);
+
+  // Detect logical sections in the email
+  const sections = detectEmailSections(body, subject);
+  console.log(`Detected ${sections.length} sections:`, sections.map(s => s.title));
+
+  // Group sections into chunks that fit within token limit
+  const chunks: Array<{ section: string; content: EmailContent }> = [];
+  let currentChunk: typeof sections = [];
+  let currentChunkTokens = basePromptTokens;
+
+  for (const section of sections) {
+    const sectionTokens = estimateTokenUsage(section.content);
+
+    // If this single section is too large, we need to split it further
+    if (sectionTokens + basePromptTokens > maxTokensPerChunk) {
+      console.log(`Section "${section.title}" is too large (${sectionTokens} tokens), splitting by paragraphs...`);
+
+      // First, save any accumulated chunk
+      if (currentChunk.length > 0) {
+        chunks.push({
+          section: currentChunk.map(s => s.title).join(', '),
+          content: {
+            subject,
+            body: currentChunk.map(s => s.content).join('\n\n'),
+            senderEmail,
+            sentDate
+          }
+        });
+        currentChunk = [];
+        currentChunkTokens = basePromptTokens;
+      }
+
+      // Split large section by paragraphs
+      const paragraphs = section.content.split(/\n\n+/);
+      let paragraphChunk: string[] = [];
+      let paragraphTokens = basePromptTokens;
+
+      for (const para of paragraphs) {
+        const paraTokens = estimateTokenUsage(para);
+
+        if (paragraphTokens + paraTokens > maxTokensPerChunk) {
+          // Save current paragraph chunk
+          if (paragraphChunk.length > 0) {
+            chunks.push({
+              section: `${section.title} (part ${chunks.length + 1})`,
+              content: {
+                subject,
+                body: paragraphChunk.join('\n\n'),
+                senderEmail,
+                sentDate
+              }
+            });
+          }
+          // Start new chunk with this paragraph
+          paragraphChunk = [para];
+          paragraphTokens = basePromptTokens + paraTokens;
+        } else {
+          paragraphChunk.push(para);
+          paragraphTokens += paraTokens;
+        }
+      }
+
+      // Save remaining paragraphs
+      if (paragraphChunk.length > 0) {
+        chunks.push({
+          section: `${section.title} (part ${chunks.length + 1})`,
+          content: {
+            subject,
+            body: paragraphChunk.join('\n\n'),
+            senderEmail,
+            sentDate
+          }
+        });
+      }
+
+      continue;
+    }
+
+    // Check if adding this section would exceed limit
+    if (currentChunkTokens + sectionTokens > maxTokensPerChunk) {
+      // Save current chunk
+      if (currentChunk.length > 0) {
+        chunks.push({
+          section: currentChunk.map(s => s.title).join(', '),
+          content: {
+            subject,
+            body: currentChunk.map(s => s.content).join('\n\n'),
+            senderEmail,
+            sentDate
+          }
+        });
+      }
+      // Start new chunk with this section
+      currentChunk = [section];
+      currentChunkTokens = basePromptTokens + sectionTokens;
+    } else {
+      // Add to current chunk
+      currentChunk.push(section);
+      currentChunkTokens += sectionTokens;
+    }
+  }
+
+  // Save final chunk
+  if (currentChunk.length > 0) {
+    chunks.push({
+      section: currentChunk.map(s => s.title).join(', '),
+      content: {
+        subject,
+        body: currentChunk.map(s => s.content).join('\n\n'),
+        senderEmail,
+        sentDate
+      }
+    });
+  }
+
+  console.log(`Created ${chunks.length} chunks from email`);
+  return chunks;
+}
+
 // Helper function for API calls with retry logic
 async function retryApiCall<T>(
   apiCall: () => Promise<T>,
@@ -1385,6 +1693,46 @@ class GeminiService {
 
   // Fallback extraction for complex cases
   async extractDates(emailContent: EmailContent): Promise<LLMResponse[]> {
+    // Check if email needs chunking
+    const chunks = chunkEmailContent(emailContent);
+
+    // If no chunking needed (single chunk), use regular processing
+    if (chunks.length === 1) {
+      return await this.extractDatesFromSingleEmail(emailContent);
+    }
+
+    // Process multiple chunks and merge results
+    console.log(`[Gemini Fallback] Processing email in ${chunks.length} chunks...`);
+    const allEvents: LLMResponse[] = [];
+
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      console.log(`[Gemini Fallback] Processing chunk ${i + 1}/${chunks.length}: ${chunk.section}`);
+
+      try {
+        const chunkEvents = await this.extractDatesFromSingleEmail(chunk.content);
+        console.log(`[Gemini Fallback] Chunk ${i + 1} extracted ${chunkEvents.length} events`);
+        allEvents.push(...chunkEvents);
+
+        // Small delay between chunks to avoid rate limiting
+        if (i < chunks.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      } catch (error) {
+        console.error(`[Gemini Fallback] Error processing chunk ${i + 1}:`, error);
+        // Continue with other chunks even if one fails
+      }
+    }
+
+    // Deduplicate events across chunks
+    const uniqueEvents = this.deduplicateEvents(allEvents);
+    console.log(`[Gemini Fallback] After deduplication: ${uniqueEvents.length} unique events from ${allEvents.length} total`);
+
+    return uniqueEvents;
+  }
+
+  // New method: Extract dates from a single email (no chunking)
+  private async extractDatesFromSingleEmail(emailContent: EmailContent): Promise<LLMResponse[]> {
     const prompt = this.createExtractionPrompt(emailContent);
 
     try {
@@ -1544,6 +1892,29 @@ class GeminiService {
       .replace('{{senderEmail}}', emailContent.senderEmail)
       .replace('{{sentDate}}', emailContent.sentDate)
       .replace('{{body}}', emailContent.body);
+  }
+
+  // Deduplicate events that may appear in multiple chunks
+  private deduplicateEvents(events: LLMResponse[]): LLMResponse[] {
+    const seen = new Map<string, LLMResponse>();
+
+    for (const event of events) {
+      // Create unique key from title + date + time
+      const normalizedTime = event.time || 'no-time';
+      const key = `${event.title.toLowerCase().trim()}:${event.date}:${normalizedTime}`;
+
+      if (!seen.has(key)) {
+        seen.set(key, event);
+      } else {
+        // If duplicate, keep the one with higher confidence
+        const existing = seen.get(key)!;
+        if (event.confidence > existing.confidence) {
+          seen.set(key, event);
+        }
+      }
+    }
+
+    return Array.from(seen.values()).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   }
 
   private validateAndNormalizeResponse(events: any[], sentDate: string): LLMResponse[] {
