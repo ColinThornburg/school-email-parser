@@ -9,18 +9,43 @@ import { prompts } from '../config/prompts.js';
  */
 function htmlToText(html: string): string {
   if (!html) return '';
-  
+
   let text = html;
-  
+
+  // Remove script and style tags and their content (they add noise)
+  text = text.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
+  text = text.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+
+  // Preserve important links by extracting href text
+  // Convert <a href="url">text</a> to "text (url)" for important links
+  text = text.replace(/<a[^>]+href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gi, (match, url, linkText) => {
+    // Only preserve link URL if it looks important (not tracking pixels, etc.)
+    if (url.startsWith('http') && !url.includes('track') && !url.includes('pixel')) {
+      return `${linkText} [${url}]`;
+    }
+    return linkText;
+  });
+
+  // Handle tables: Add spacing between cells
+  text = text.replace(/<\/td>/gi, ' | ');
+  text = text.replace(/<\/tr>/gi, '\n');
+  text = text.replace(/<\/th>/gi, ' | ');
+
+  // Preserve headings with emphasis
+  text = text.replace(/<h[1-6][^>]*>(.*?)<\/h[1-6]>/gi, '\n\n$1\n');
+
   // Replace common block elements with line breaks
-  text = text.replace(/<\/?(div|p|br|h[1-6]|li|tr|td|th)[^>]*>/gi, '\n');
-  
+  text = text.replace(/<\/?(div|p|br|li|blockquote)[^>]*>/gi, '\n');
+
   // Replace list items with bullet points
   text = text.replace(/<li[^>]*>/gi, '\n• ');
-  
-  // Remove all other HTML tags
+
+  // Handle horizontal rules
+  text = text.replace(/<hr[^>]*>/gi, '\n---\n');
+
+  // Remove all remaining HTML tags
   text = text.replace(/<[^>]*>/g, '');
-  
+
   // Decode common HTML entities
   const entities: { [key: string]: string } = {
     '&amp;': '&',
@@ -35,24 +60,43 @@ function htmlToText(html: string): string {
     '&hellip;': '…',
     '&copy;': '©',
     '&reg;': '®',
-    '&trade;': '™'
+    '&trade;': '™',
+    '&bull;': '•',
+    '&middot;': '·',
+    '&lsquo;': ''',
+    '&rsquo;': ''',
+    '&ldquo;': '"',
+    '&rdquo;': '"',
+    '&times;': '×',
+    '&divide;': '÷'
   };
-  
+
   // Replace HTML entities
   for (const [entity, replacement] of Object.entries(entities)) {
     text = text.replace(new RegExp(entity, 'gi'), replacement);
   }
-  
+
   // Handle numeric HTML entities (like &#160; for non-breaking space)
   text = text.replace(/&#(\d+);/g, (match, dec) => {
-    return String.fromCharCode(parseInt(dec, 10));
+    const code = parseInt(dec, 10);
+    // Skip control characters and use space for non-breaking space
+    if (code === 160) return ' ';
+    if (code < 32) return '';
+    return String.fromCharCode(code);
   });
-  
+
   // Handle hex HTML entities (like &#x00A0; for non-breaking space)
   text = text.replace(/&#x([0-9A-F]+);/gi, (match, hex) => {
-    return String.fromCharCode(parseInt(hex, 16));
+    const code = parseInt(hex, 16);
+    // Skip control characters and use space for non-breaking space
+    if (code === 160) return ' ';
+    if (code < 32) return '';
+    return String.fromCharCode(code);
   });
-  
+
+  // Handle zero-width characters and other Unicode noise
+  text = text.replace(/[\u200B-\u200D\uFEFF]/g, ''); // Zero-width spaces
+
   // Clean up whitespace
   text = text
     .replace(/\r\n/g, '\n') // Normalize line endings
@@ -60,9 +104,28 @@ function htmlToText(html: string): string {
     .replace(/\n{3,}/g, '\n\n') // Replace multiple line breaks with double line breaks
     .replace(/[ \t]+/g, ' ') // Replace multiple spaces/tabs with single space
     .replace(/[ \t]*\n[ \t]*/g, '\n') // Remove spaces around line breaks
+    .replace(/\n\s*\n\s*\n/g, '\n\n') // Remove excessive blank lines
     .trim(); // Remove leading/trailing whitespace
-  
+
   return text;
+}
+
+/**
+ * Decodes quoted-printable encoded text
+ * Used in many MIME email parts
+ */
+function decodeQuotedPrintable(text: string): string {
+  if (!text) return '';
+
+  // Decode =XX sequences (hex-encoded characters)
+  let decoded = text.replace(/=([0-9A-F]{2})/gi, (match, hex) => {
+    return String.fromCharCode(parseInt(hex, 16));
+  });
+
+  // Handle soft line breaks (=\r\n or =\n)
+  decoded = decoded.replace(/=\r?\n/g, '');
+
+  return decoded;
 }
 
 /**
@@ -70,14 +133,21 @@ function htmlToText(html: string): string {
  */
 function extractEmailText(body: string): string {
   if (!body) return '';
-  
+
+  // First, try to detect and decode quoted-printable encoding
+  // Common indicators: presence of =XX sequences and/or =\n line continuations
+  const looksLikeQuotedPrintable = /=[0-9A-F]{2}|=\r?\n/.test(body);
+  if (looksLikeQuotedPrintable) {
+    body = decodeQuotedPrintable(body);
+  }
+
   // Check if content appears to be HTML (contains HTML tags)
   const hasHtmlTags = /<[^>]+>/.test(body);
-  
+
   if (hasHtmlTags) {
     return htmlToText(body);
   }
-  
+
   // For plain text, just clean up whitespace
   return body
     .replace(/\r\n/g, '\n')
@@ -1037,7 +1107,7 @@ class GmailService {
     return await response.json();
   }
 
-  // Extract text content from Gmail message
+  // Extract text content from Gmail message with proper MIME handling
   extractTextFromMessage(message: any): {
     subject: string;
     body: string;
@@ -1050,24 +1120,90 @@ class GmailService {
     const date = headers.find((h: any) => h.name === 'Date')?.value || '';
 
     let body = '';
-    
-    // Extract body text recursively
-    const extractBody = (part: any): string => {
+
+    // Strategy: Prefer plain text, fall back to HTML if needed
+    // This recursive function extracts content with MIME-aware handling
+    const extractBody = (part: any, depth: number = 0): { text: string; html: string } => {
+      const result = { text: '', html: '' };
+      const mimeType = part.mimeType || '';
+
+      // Base case: This part has body data
       if (part.body?.data) {
-        return Buffer.from(part.body.data, 'base64').toString('utf-8');
+        try {
+          const decoded = Buffer.from(part.body.data, 'base64').toString('utf-8');
+
+          // Store based on MIME type
+          if (mimeType === 'text/plain') {
+            result.text = decoded;
+          } else if (mimeType === 'text/html') {
+            result.html = decoded;
+          } else if (mimeType.startsWith('text/')) {
+            // Other text types (text/calendar, etc.)
+            result.text = decoded;
+          }
+        } catch (err) {
+          console.warn(`Failed to decode part with mimeType ${mimeType}:`, err);
+        }
       }
-      
-      if (part.parts) {
-        return part.parts.map(extractBody).join('\n');
+
+      // Recursive case: This part has sub-parts
+      if (part.parts && Array.isArray(part.parts)) {
+        for (const subPart of part.parts) {
+          const subResult = extractBody(subPart, depth + 1);
+
+          // Handle multipart/alternative: prefer text/plain over text/html
+          if (mimeType === 'multipart/alternative') {
+            // In multipart/alternative, parts are ordered by preference (simplest first)
+            // We prefer text/plain, so only take HTML if we don't have text yet
+            if (subResult.text) {
+              result.text = subResult.text;
+            }
+            if (!result.text && subResult.html) {
+              result.html = subResult.html;
+            }
+          } else {
+            // For other multipart types (mixed, related), concatenate all text content
+            if (subResult.text) {
+              result.text += (result.text ? '\n\n' : '') + subResult.text;
+            }
+            if (subResult.html) {
+              result.html += (result.html ? '\n\n' : '') + subResult.html;
+            }
+          }
+        }
       }
-      
-      return '';
+
+      return result;
     };
 
+    // Extract from the message payload
+    let extractedContent: { text: string; html: string };
+
     if (message.payload.body?.data) {
-      body = Buffer.from(message.payload.body.data, 'base64').toString('utf-8');
+      // Simple message with body directly in payload
+      const decoded = Buffer.from(message.payload.body.data, 'base64').toString('utf-8');
+      const mimeType = message.payload.mimeType || '';
+
+      if (mimeType === 'text/plain') {
+        extractedContent = { text: decoded, html: '' };
+      } else if (mimeType === 'text/html') {
+        extractedContent = { text: '', html: decoded };
+      } else {
+        extractedContent = { text: decoded, html: '' };
+      }
     } else if (message.payload.parts) {
-      body = message.payload.parts.map(extractBody).join('\n');
+      // Multipart message - use recursive extraction
+      extractedContent = extractBody(message.payload, 0);
+    } else {
+      // Empty message
+      extractedContent = { text: '', html: '' };
+    }
+
+    // Prefer text/plain, fall back to converted HTML
+    if (extractedContent.text) {
+      body = extractedContent.text;
+    } else if (extractedContent.html) {
+      body = extractedContent.html;
     }
 
     // Clean HTML and extract readable text from body
